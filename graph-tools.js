@@ -29,10 +29,15 @@ async function getAuthUrl() {
     'offline_access'
   ];
   
+  // Get redirect URI - use environment variable or construct from request
+  const redirectUri = process.env.REDIRECT_URI || 'https://microsoft-agent-aubbhefsbzagdhha.eastus-01.azurewebsites.net/auth/callback';
+  
+  console.log('🔐 Auth URL being generated with redirect_uri:', redirectUri);
+  
   const params = new URLSearchParams({
     client_id: process.env.MICROSOFT_CLIENT_ID,
     response_type: 'code',
-    redirect_uri: process.env.REDIRECT_URI,
+    redirect_uri: redirectUri,
     response_mode: 'query',
     scope: scopes.join(' ')
   });
@@ -44,6 +49,8 @@ async function getAuthUrl() {
 async function getAccessTokenByAuthCode(code) {
   try {
     const msalClient = initMsalClient();
+    const redirectUri = process.env.REDIRECT_URI || 'https://microsoft-agent-aubbhefsbzagdhha.eastus-01.azurewebsites.net/auth/callback';
+    
     const tokenRequest = {
       code: code,
       scopes: [
@@ -54,7 +61,7 @@ async function getAccessTokenByAuthCode(code) {
         'Sites.Read.All',
         'User.Read'
       ],
-      redirectUri: process.env.REDIRECT_URI,
+      redirectUri: redirectUri,
       codeVerifier: undefined
     };
     
