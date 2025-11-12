@@ -20,12 +20,19 @@ jobs:
         with:
           node-version: '24.x'
 
+      # ✅ Install FFmpeg before build & test
+      - name: Install FFmpeg
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          ffmpeg -version  # Verify installation
+
       - name: npm install, build, and test
         run: |
           npm install
           npm run build --if-present
           npm run test --if-present
-        env:   # 👇 Add your secrets here so test-azure.js can read them
+        env:
           AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
           AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
           AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
@@ -56,16 +63,16 @@ jobs:
         with:
           name: node-app
       
+      # ✅ Login to Azure using your app registration credentials
       - name: Login to Azure
         uses: azure/login@v2
         with:
-        
           client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_B69F5AE9767B4AFCAB25DBE6B1E397BC }}
           tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_CC559834CFFB48EDAD87140D02443CCA }}
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_A908570E0CF94FEF99954C1E99DD9100 }}
 
-
-      - name: 'Deploy to Azure Web App'
+      # ✅ Deploy the app to Azure Web App
+      - name: Deploy to Azure Web App
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
@@ -73,13 +80,14 @@ jobs:
           slot-name: 'Production'
           package: .
 
-      - name: 'Set Azure App Service Application Settings'
+      # ✅ Set App Settings (Environment Variables)
+      - name: Set Azure App Service Application Settings
         uses: azure/CLI@v2
         with:
           azcliversion: latest
           inlineScript: |
             az webapp config appsettings set \
-              --resource-group 'microsoft-agent-rg' \
+              --resource-group 'AI-102' \
               --name 'Microsoft-Agent' \
               --settings \
                 AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
@@ -92,4 +100,3 @@ jobs:
                 MICROSOFT_CLIENT_SECRET="${{ secrets.MICROSOFT_CLIENT_SECRET }}" \
                 MICROSOFT_CLIENT_ID="${{ secrets.MICROSOFT_CLIENT_ID }}" \
                 MICROSOFT_TENANT_ID="${{ secrets.MICROSOFT_TENANT_ID }}"
-
