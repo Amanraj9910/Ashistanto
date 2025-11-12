@@ -16,7 +16,7 @@ router.get('/login', async (req, res) => {
 });
 
 // Step 2: Handle Microsoft redirect
-router.get('/redirect', async (req, res) => {
+router.get('/callback', async (req, res) => {
   try {
     const code = req.query.code;
     const tokens = await getAccessTokenByAuthCode(code);
