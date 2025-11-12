@@ -25,6 +25,17 @@ jobs:
           npm install
           npm run build --if-present
           npm run test --if-present
+        env:   # 👇 Add your secrets here so test-azure.js can read them
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
+          AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
+          MICROSOFT_USER_EMAIL: ${{ secrets.MICROSOFT_USER_EMAIL }}
+          REDIRECT_URI: ${{ secrets.REDIRECT_URI }}
+          MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
+          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
+          MICROSOFT_TENANT_ID: ${{ secrets.MICROSOFT_TENANT_ID }}
 
       - name: Upload artifact for deployment job
         uses: actions/upload-artifact@v4
@@ -73,3 +84,4 @@ jobs:
           MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
           MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
           MICROSOFT_TENANT_ID: ${{ secrets.MICROSOFT_TENANT_ID }}
+
