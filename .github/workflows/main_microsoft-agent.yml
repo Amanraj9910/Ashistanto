@@ -79,7 +79,7 @@ jobs:
           azcliversion: latest
           inlineScript: |
             az webapp config appsettings set \
-              --resource-group 'microsoft-agent-rg' \
+              --resource-group 'AI-102' \
               --name 'Microsoft-Agent' \
               --settings \
                 AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
@@ -92,4 +92,5 @@ jobs:
                 MICROSOFT_CLIENT_SECRET="${{ secrets.MICROSOFT_CLIENT_SECRET }}" \
                 MICROSOFT_CLIENT_ID="${{ secrets.MICROSOFT_CLIENT_ID }}" \
                 MICROSOFT_TENANT_ID="${{ secrets.MICROSOFT_TENANT_ID }}"
+
 
