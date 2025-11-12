@@ -73,15 +73,23 @@ jobs:
           slot-name: 'Production'
           package: .
 
-        env:
-          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
-          AZURE_SPEECH_REGION: ${{ secrets.AZURE_SPEECH_REGION }}
-          AZURE_SPEECH_KEY: ${{ secrets.AZURE_SPEECH_KEY }}
-          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
-          AZURE_OPENAI_DEPLOYMENT: ${{ secrets.AZURE_OPENAI_DEPLOYMENT }}
-          MICROSOFT_USER_EMAIL: ${{ secrets.MICROSOFT_USER_EMAIL }}
-          REDIRECT_URI: ${{ secrets.REDIRECT_URI }}
-          MICROSOFT_CLIENT_SECRET: ${{ secrets.MICROSOFT_CLIENT_SECRET }}
-          MICROSOFT_CLIENT_ID: ${{ secrets.MICROSOFT_CLIENT_ID }}
-          MICROSOFT_TENANT_ID: ${{ secrets.MICROSOFT_TENANT_ID }}
+      - name: 'Set Azure App Service Application Settings'
+        uses: azure/CLI@v2
+        with:
+          azcliversion: latest
+          inlineScript: |
+            az webapp config appsettings set \
+              --resource-group 'microsoft-agent-rg' \
+              --name 'Microsoft-Agent' \
+              --settings \
+                AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
+                AZURE_SPEECH_REGION="${{ secrets.AZURE_SPEECH_REGION }}" \
+                AZURE_SPEECH_KEY="${{ secrets.AZURE_SPEECH_KEY }}" \
+                AZURE_OPENAI_KEY="${{ secrets.AZURE_OPENAI_KEY }}" \
+                AZURE_OPENAI_DEPLOYMENT="${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" \
+                MICROSOFT_USER_EMAIL="${{ secrets.MICROSOFT_USER_EMAIL }}" \
+                REDIRECT_URI="${{ secrets.REDIRECT_URI }}" \
+                MICROSOFT_CLIENT_SECRET="${{ secrets.MICROSOFT_CLIENT_SECRET }}" \
+                MICROSOFT_CLIENT_ID="${{ secrets.MICROSOFT_CLIENT_ID }}" \
+                MICROSOFT_TENANT_ID="${{ secrets.MICROSOFT_TENANT_ID }}"
 
