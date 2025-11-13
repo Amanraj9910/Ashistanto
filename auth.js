@@ -1,12 +1,25 @@
 const express = require('express');
+const session = require('express-session');
+const helmet = require('helmet');
+const { getAuthUrl, getAccessTokenByAuthCode } = require('./graph-tools');
+const app = express();
 const router = express.Router();
-const {
-  getAuthUrl,
-  getAccessTokenByAuthCode
-} = require('./graph-tools');
 
-let loggedInUser = null; 
-const userTokenStore = new Map();
+// Use helmet for security headers
+app.use(helmet());
+
+// Session config (use RedisStore in production)
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'yourSecretHere',
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    secure: true,      // HTTPS only
+    httpOnly: true,    // Prevent JS access (XSS)
+    sameSite: 'lax',   // CSRF protection
+    maxAge: 3600000    // 1 hour
+  }
+}));
 
 // Step 1: Redirect to Microsoft login
 router.get('/login', async (req, res) => {
@@ -20,36 +33,17 @@ router.get('/callback', async (req, res) => {
     const code = req.query.code;
     const tokens = await getAccessTokenByAuthCode(code);
 
-    const sessionId = `session_${Date.now()}`;
-
-    loggedInUser = {
-      sessionId: sessionId,
+    // Save tokens in server-side session
+    req.session.isAuthenticated = true;
+    req.session.account = {
+      email: tokens.account.username,
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
-      email: tokens.account.username
+      tokenExpiry: Date.now() + (tokens.expiresIn * 1000)
     };
 
-    userTokenStore.set(sessionId, tokens.accessToken);
-
-    console.log('✅ User logged in:', loggedInUser.email);
-    console.log('📌 Session ID:', sessionId);
-
-    // ⭐⭐⭐ FIX: store session ID in localStorage (never fails)
-    return res.send(`
-      <html>
-        <body style="font-family: Arial; text-align:center; padding-top:40px;">
-          <h2>Logging you in…</h2>
-          <p>Please wait…</p>
-          <script>
-            // Save session ID
-            localStorage.setItem('sessionId', '${sessionId}');
-            
-            // Redirect to homepage
-            window.location.href = "https://microsoft-agent-aubbhefsbzagdhha.eastus-01.azurewebsites.net/";
-          </script>
-        </body>
-      </html>
-    `);
+    // Redirect back to main app URL
+    return res.redirect('https://microsoft-agent-aubbhefsbzagdhha.eastus-01.azurewebsites.net');
 
   } catch (err) {
     console.error('❌ Login failed:', err);
@@ -57,22 +51,25 @@ router.get('/callback', async (req, res) => {
   }
 });
 
-// Step 3: API – Get logged in user
-router.get('/user', (req, res) => {
-  if (!loggedInUser) return res.status(401).send('User not logged in');
-  res.json(loggedInUser);
-});
-
-// Step 4: API – Get access token using session ID
-router.get('/session-token/:sessionId', (req, res) => {
-  const { sessionId } = req.params;
-  const token = userTokenStore.get(sessionId);
-
-  if (!token) {
-    return res.status(404).json({ error: 'Session not found or token expired' });
+// Auth check middleware
+function isAuthenticated(req, res, next) {
+  if (!req.session.isAuthenticated) {
+    return res.status(401).json({ error: 'User not logged in' });
   }
+  next();
+}
 
-  res.json({ accessToken: token });
+// Step 3: API – Get logged in user
+router.get('/user', isAuthenticated, (req, res) => {
+  res.json(req.session.account);
 });
 
-module.exports = { router, loggedInUser, userTokenStore };
+// Step 4: API – Get access token (protected)
+router.get('/access-token', isAuthenticated, (req, res) => {
+  res.json({ accessToken: req.session.account.accessToken });
+});
+
+// Attach router to app root
+app.use('/', router);
+
+module.exports = app;
