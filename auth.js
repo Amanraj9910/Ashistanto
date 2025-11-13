@@ -42,7 +42,7 @@ router.get('/callback', async (req, res) => {
     });
 
     // ⭐ Redirect user back to homepage
-    return res.redirect("/");
+    return res.redirect("https://microsoft-agent-aubbhefsbzagdhha.eastus-01.azurewebsites.net/");
 
   } catch (err) {
     console.error('❌ Login failed:', err);
