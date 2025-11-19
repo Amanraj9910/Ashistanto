@@ -26,10 +26,12 @@ async function getAuthUrl() {
     'Files.ReadWrite',
     'Sites.Read.All',
     'User.Read',
+    'Contacts.Read',
+    'OnlineMeetings.ReadWrite',
+    'Chat.ReadWrite',
     'offline_access'
   ];
   
-  // Get redirect URI - use environment variable or construct from request
   const redirectUri = process.env.REDIRECT_URI || 'https://microsoft-agent-aubbhefsbzagdhha.eastus-01.azurewebsites.net/auth/callback';
   
   console.log('🔐 Auth URL being generated with redirect_uri:', redirectUri);
@@ -59,7 +61,10 @@ async function getAccessTokenByAuthCode(code) {
         'Calendars.ReadWrite',
         'Files.ReadWrite',
         'Sites.Read.All',
-        'User.Read'
+        'User.Read',
+        'Contacts.Read',
+        'OnlineMeetings.ReadWrite',
+        'Chat.ReadWrite'
       ],
       redirectUri: redirectUri,
       codeVerifier: undefined
@@ -85,7 +90,10 @@ async function getAccessTokenByRefreshToken(refreshToken) {
         'Calendars.ReadWrite',
         'Files.ReadWrite',
         'Sites.Read.All',
-        'User.Read'
+        'User.Read',
+        'Contacts.Read',
+        'OnlineMeetings.ReadWrite',
+        'Chat.ReadWrite'
       ]
     };
     
@@ -97,7 +105,7 @@ async function getAccessTokenByRefreshToken(refreshToken) {
   }
 }
 
-// Get access token using client credentials flow (fallback for app-only operations)
+// Get access token using client credentials flow (fallback)
 async function getAccessTokenAppOnly() {
   try {
     const msalClient = initMsalClient();
@@ -113,7 +121,7 @@ async function getAccessTokenAppOnly() {
   }
 }
 
-// Initialize Graph client with proper error handling
+// Initialize Graph client
 async function getGraphClient(userAccessToken = null) {
   let accessToken;
   
@@ -152,7 +160,6 @@ async function getSenderProfile(userToken = null) {
     };
   } catch (error) {
     console.error('Error getting sender profile:', error);
-    // Return default values if profile fetch fails
     return {
       displayName: 'User',
       email: userEmail || 'sender@hoshodigital.com',
@@ -160,6 +167,113 @@ async function getSenderProfile(userToken = null) {
       department: '',
       officeLocation: ''
     };
+  }
+}
+
+// ============== CONTACT SEARCH FUNCTIONS ==============
+
+/**
+ * 🔍 Search for contact email by name from Graph API
+ * First tries user's contacts, then organization directory
+ * Falls back to email generation if not found
+ */
+async function searchContactEmail(name, userToken = null) {
+  try {
+    console.log(`🔍 Searching for contact: "${name}"`);
+    const client = await getGraphClient(userToken);
+    
+    // Step 1: Search in user's personal contacts
+    try {
+      console.log('  → Searching personal contacts...');
+      const contacts = await client
+        .api('/me/contacts')
+        .filter(`startswith(displayName,'${name}') or startswith(givenName,'${name}') or startswith(surname,'${name}')`)
+        .select('displayName,emailAddresses,givenName,surname')
+        .top(5)
+        .get();
+      
+      if (contacts.value && contacts.value.length > 0) {
+        console.log(`  ✅ Found ${contacts.value.length} contact(s) in personal contacts`);
+        return contacts.value.map(contact => ({
+          name: contact.displayName,
+          email: contact.emailAddresses?.[0]?.address || 'No email',
+          source: 'personal_contacts'
+        }));
+      }
+    } catch (err) {
+      console.log('  ⚠ Personal contacts search failed:', err.message);
+    }
+    
+    // Step 2: Search in People API (combines contacts, directory, and frequent contacts)
+    try {
+      console.log('  → Searching People API...');
+      const people = await client
+        .api('/me/people')
+        .search(`"${name}"`)
+        .select('displayName,emailAddresses,givenName,surname')
+        .top(5)
+        .get();
+      
+      if (people.value && people.value.length > 0) {
+        console.log(`  ✅ Found ${people.value.length} person(s) in People API`);
+        return people.value
+          .filter(person => person.emailAddresses && person.emailAddresses.length > 0)
+          .map(person => ({
+            name: person.displayName,
+            email: person.emailAddresses[0].address,
+            source: 'people_api'
+          }));
+      }
+    } catch (err) {
+      console.log('  ⚠ People API search failed:', err.message);
+    }
+    
+    // Step 3: Search in organization directory
+    try {
+      console.log('  → Searching organization directory...');
+      const users = await client
+        .api('/users')
+        .filter(`startswith(displayName,'${name}') or startswith(givenName,'${name}') or startswith(surname,'${name}')`)
+        .select('displayName,mail,userPrincipalName,givenName,surname')
+        .top(5)
+        .get();
+      
+      if (users.value && users.value.length > 0) {
+        console.log(`  ✅ Found ${users.value.length} user(s) in organization`);
+        return users.value.map(user => ({
+          name: user.displayName,
+          email: user.mail || user.userPrincipalName,
+          source: 'organization_directory'
+        }));
+      }
+    } catch (err) {
+      console.log('  ⚠ Organization directory search failed:', err.message);
+    }
+    
+    // Step 4: Fallback - Generate email from name
+    console.log('  → No contacts found, generating email from name...');
+    const nameParts = name.trim().split(/\s+/);
+    let firstName, lastName;
+    
+    if (nameParts.length < 2) {
+      firstName = nameParts[0];
+      lastName = nameParts[0];
+    } else {
+      firstName = nameParts[0];
+      lastName = nameParts.slice(1).join(' ');
+    }
+    
+    const generatedEmail = generateEmailFromName(firstName, lastName);
+    console.log(`  ✅ Generated email: ${generatedEmail}`);
+    
+    return [{
+      name: `${firstName} ${lastName}`,
+      email: generatedEmail,
+      source: 'generated'
+    }];
+  } catch (error) {
+    console.error('❌ Error in searchContactEmail:', error);
+    throw new Error(`Failed to find contact email for "${name}"`);
   }
 }
 
@@ -213,41 +327,66 @@ async function searchEmails(query, userToken = null) {
   }
 }
 
-// Send email with proper formatting
-async function sendEmail(recipient_name, subject, body, userToken = null) {
+/**
+ * 📧 Send email with contact search, CC support, and proper formatting
+ */
+async function sendEmail(recipient_name, subject, body, ccRecipients = [], userToken = null) {
   try {
+    console.log(`📧 Sending email to: ${recipient_name}`);
+    
     // Get sender's profile
     const senderProfile = await getSenderProfile(userToken);
     
-    // Parse recipient name
-    const nameParts = recipient_name.trim().split(/\s+/);
-    let firstName, lastName;
+    // Search for recipient email using contact search
+    const recipientResults = await searchContactEmail(recipient_name, userToken);
     
-    if (nameParts.length < 2) {
-      firstName = nameParts[0];
-      lastName = nameParts[0];
-    } else {
-      firstName = nameParts[0];
-      lastName = nameParts.slice(1).join(' ');
+    if (!recipientResults || recipientResults.length === 0) {
+      throw new Error(`Could not find email for recipient: ${recipient_name}`);
     }
     
-    // Generate recipient email
-    const recipientEmail = generateEmailFromName(firstName, lastName);
-
-    // 🧹 Clean the body: remove HTML tags
+    const recipient = recipientResults[0];
+    console.log(`  ✅ Found recipient: ${recipient.email} (source: ${recipient.source})`);
+    
+    // Parse recipient name for greeting
+    const nameParts = recipient_name.trim().split(/\s+/);
+    const firstName = nameParts[0];
+    
+    // Process CC recipients
+    const ccEmailAddresses = [];
+    if (ccRecipients && ccRecipients.length > 0) {
+      console.log(`  📎 Processing ${ccRecipients.length} CC recipient(s)...`);
+      for (const ccName of ccRecipients) {
+        try {
+          const ccResults = await searchContactEmail(ccName, userToken);
+          if (ccResults && ccResults.length > 0) {
+            ccEmailAddresses.push({
+              emailAddress: {
+                address: ccResults[0].email,
+                name: ccResults[0].name
+              }
+            });
+            console.log(`    ✅ CC: ${ccResults[0].email}`);
+          }
+        } catch (err) {
+          console.log(`    ⚠ Could not find CC recipient: ${ccName}`);
+        }
+      }
+    }
+    
+    // Clean the body
     const cleanBody = body
-      .replace(/<[^>]*>/g, '') // remove all HTML tags
-      .replace(/\s+/g, ' ')    // normalize spacing
+      .replace(/<[^>]*>/g, '')
+      .replace(/\s+/g, ' ')
       .trim();
 
-    // 📝 Build the final plain-text message
+    // Build plain text email
     const plainTextBody = `
 Hi ${firstName},
 
 ${cleanBody}
 
 Best regards,
-${senderProfile.displayName || 'Aman Raj'}
+${senderProfile.displayName || 'User'}
 `;
 
     // Send the email
@@ -256,36 +395,44 @@ ${senderProfile.displayName || 'Aman Raj'}
       message: {
         subject: subject,
         body: {
-          contentType: 'Text', // ✅ plain text only
+          contentType: 'Text',
           content: plainTextBody.trim()
         },
         toRecipients: [
           {
             emailAddress: {
-              address: recipientEmail,
-              name: `${firstName} ${lastName}`
+              address: recipient.email,
+              name: recipient.name
             }
           }
-        ]
+        ],
+        ccRecipients: ccEmailAddresses
       }
     };
 
     await client.api('/me/sendMail').post(message);
 
-    return { 
+    const result = { 
       success: true, 
-      message: `Email sent successfully to ${firstName} ${lastName}`,
-      recipientEmail: recipientEmail,
-      recipientName: `${firstName} ${lastName}`,
-      subject: subject
+      message: `Email sent successfully to ${recipient.name}`,
+      recipientEmail: recipient.email,
+      recipientName: recipient.name,
+      subject: subject,
+      source: recipient.source
     };
+    
+    if (ccEmailAddresses.length > 0) {
+      result.ccRecipients = ccEmailAddresses.map(cc => cc.emailAddress.address).join(', ');
+    }
+    
+    console.log(`  ✅ Email sent successfully`);
+    return result;
 
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('❌ Error sending email:', error);
     throw new Error(`Failed to send email: ${error.message}`);
   }
 }
-
 
 // ============== CALENDAR FUNCTIONS ==============
 
@@ -300,7 +447,7 @@ async function getCalendarEvents(days = 7, userToken = null) {
     const events = await client
       .api('/me/calendar/events')
       .filter(`start/dateTime ge '${startDate.toISOString()}' and start/dateTime le '${endDate.toISOString()}'`)
-      .select('subject,start,end,location,attendees,organizer')
+      .select('subject,start,end,location,attendees,organizer,isOnlineMeeting,onlineMeeting')
       .orderby('start/dateTime')
       .top(10)
       .get();
@@ -311,7 +458,9 @@ async function getCalendarEvents(days = 7, userToken = null) {
       end: new Date(event.end.dateTime).toLocaleString(),
       location: event.location?.displayName || 'No location',
       organizer: event.organizer?.emailAddress?.name || 'Unknown',
-      attendees: event.attendees?.length || 0
+      attendees: event.attendees?.length || 0,
+      isTeamsMeeting: event.isOnlineMeeting || false,
+      joinUrl: event.onlineMeeting?.joinUrl || null
     }));
   } catch (error) {
     console.error('Error getting calendar events:', error);
@@ -319,7 +468,9 @@ async function getCalendarEvents(days = 7, userToken = null) {
   }
 }
 
-// Create calendar event with multiple attendees and Teams meeting support
+/**
+ * 📅 Create calendar event with Teams meeting support and attendee search
+ */
 async function createCalendarEvent(
   subject,
   start,
@@ -330,75 +481,81 @@ async function createCalendarEvent(
   userToken = null
 ) {
   try {
+    console.log(`📅 Creating calendar event: "${subject}"`);
+    console.log(`   Teams meeting requested: ${isTeamsMeeting}`);
+    
     if (!userToken) throw new Error('Missing user token.');
 
     const client = await getGraphClient(userToken);
 
-    // 🧠 Decode token payload safely
-    let decoded;
-    try {
-      decoded = JSON.parse(Buffer.from(userToken.split('.')[1], 'base64').toString());
-    } catch (err) {
-      throw new Error('Invalid or malformed access token.');
-    }
-
-    // 🧩 Detect if it's an app token (no user identity info)
-    const isAppToken = !decoded.upn && !decoded.preferred_username;
-
-    // 👤 Identify which user calendar to use
-    const userEmail =
-      decoded.upn ||
-      decoded.preferred_username ||
-      decoded.email ||
-      decoded.unique_name ||
-      'Amanr@hoshodigital.com'; // ✅ default fallback for app token
-
-    // 🧾 Convert attendee names → emails
+    // Process attendees - search for their emails
     const attendeeEmails = [];
     if (attendeeNames && attendeeNames.length > 0) {
+      console.log(`   Processing ${attendeeNames.length} attendee(s)...`);
       for (const name of attendeeNames) {
-        const nameParts = name.trim().split(/\s+/);
-        const firstName = nameParts[0];
-        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : nameParts[0];
-
-        const email = generateEmailFromName(firstName, lastName);
-        attendeeEmails.push({
-          emailAddress: {
-            address: email,
-            name: `${firstName.charAt(0).toUpperCase() + firstName.slice(1)} ${lastName
-              .charAt(0)
-              .toUpperCase() + lastName.slice(1)}`
-          },
-          type: 'required'
-        });
+        try {
+          const results = await searchContactEmail(name, userToken);
+          if (results && results.length > 0) {
+            attendeeEmails.push({
+              emailAddress: {
+                address: results[0].email,
+                name: results[0].name
+              },
+              type: 'required'
+            });
+            console.log(`     ✅ Attendee: ${results[0].email} (${results[0].source})`);
+          }
+        } catch (err) {
+          console.log(`     ⚠ Could not find attendee: ${name}`);
+        }
       }
     }
 
-    // 🗓️ Build the calendar event object
+    // Build the calendar event object
     const event = {
       subject,
       start: { dateTime: start, timeZone: 'Asia/Kolkata' },
       end: { dateTime: end, timeZone: 'Asia/Kolkata' },
       location: location ? { displayName: location } : undefined,
-      isOnlineMeeting: isTeamsMeeting,
-      onlineMeetingProvider: isTeamsMeeting ? 'teamsForBusiness' : undefined,
       attendees: attendeeEmails
     };
 
-    // Remove undefined properties (clean event object)
-    Object.keys(event).forEach((key) => event[key] === undefined && delete event[key]);
+    // Try to create Teams meeting if requested
+    if (isTeamsMeeting) {
+      try {
+        console.log('   → Attempting to create Teams meeting...');
+        event.isOnlineMeeting = true;
+        event.onlineMeetingProvider = 'teamsForBusiness';
+        
+        const createdEvent = await client.api('/me/events').post(event);
+        
+        console.log('   ✅ Teams meeting created successfully');
+        
+        return {
+          success: true,
+          eventId: createdEvent.id,
+          subject: createdEvent.subject,
+          attendees: attendeeEmails.map((a) => a.emailAddress.name).join(', '),
+          attendeeCount: attendeeEmails.length,
+          startTime: new Date(start).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+          endTime: new Date(end).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+          isTeamsMeeting: true,
+          joinUrl: createdEvent.onlineMeeting?.joinUrl || null,
+          message: `Teams meeting "${subject}" created successfully with ${attendeeEmails.length} attendee(s). Join URL: ${createdEvent.onlineMeeting?.joinUrl || 'Pending'}`
+        };
+      } catch (teamsError) {
+        console.log('   ⚠ Teams meeting creation failed, creating regular calendar event:', teamsError.message);
+        // Fall through to create regular event
+      }
+    }
 
-    // ✅ Choose endpoint based on token type
-    const endpoint = isAppToken
-      ? `/users/${userEmail}/events`
-      : `/me/events`;
-
-    console.log(`📅 Creating calendar event via: ${endpoint}`);
-
-    // 🔐 Create the event using Graph API
-    const createdEvent = await client.api(endpoint).post(event);
-
-    console.log('✅ Event created successfully:', createdEvent.id);
+    // Create regular calendar event (no Teams)
+    event.isOnlineMeeting = false;
+    delete event.onlineMeetingProvider;
+    
+    const createdEvent = await client.api('/me/events').post(event);
+    
+    console.log('   ✅ Calendar event created successfully');
 
     return {
       success: true,
@@ -408,59 +565,13 @@ async function createCalendarEvent(
       attendeeCount: attendeeEmails.length,
       startTime: new Date(start).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
       endTime: new Date(end).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-      joinUrl: createdEvent.onlineMeeting?.joinUrl || null,
-      message: isTeamsMeeting
-        ? `Teams meeting "${subject}" created successfully with ${attendeeEmails.length} attendee(s)`
-        : `Calendar event "${subject}" created successfully with ${attendeeEmails.length} attendee(s)`
+      isTeamsMeeting: false,
+      joinUrl: null,
+      message: `Calendar event "${subject}" created successfully with ${attendeeEmails.length} attendee(s)`
     };
   } catch (error) {
     console.error('❌ Error creating calendar event:', error);
     throw new Error('Failed to create calendar event: ' + error.message);
-  }
-}
-
-// ============== SHAREPOINT FUNCTIONS ==============
-
-// Get recent files from OneDrive/SharePoint
-async function getRecentFiles(count = 10, userToken = null) {
-  try {
-    const client = await getGraphClient(userToken);
-    const files = await client
-      .api('/me/drive/recent')
-      .top(count)
-      .get();
-    
-    return files.value.map(file => ({
-      name: file.name,
-      webUrl: file.webUrl,
-      lastModified: new Date(file.lastModifiedDateTime).toLocaleString(),
-      size: formatFileSize(file.size),
-      type: file.file?.mimeType || 'folder'
-    }));
-  } catch (error) {
-    console.error('Error getting recent files:', error);
-    throw new Error('Failed to retrieve recent files');
-  }
-}
-
-// Search files in OneDrive/SharePoint
-async function searchFiles(query, userToken = null) {
-  try {
-    const client = await getGraphClient(userToken);
-    const files = await client
-      .api(`/me/drive/root/search(q='${query}')`)
-      .top(10)
-      .get();
-    
-    return files.value.map(file => ({
-      name: file.name,
-      webUrl: file.webUrl,
-      lastModified: new Date(file.lastModifiedDateTime).toLocaleString(),
-      size: formatFileSize(file.size)
-    }));
-  } catch (error) {
-    console.error('Error searching files:', error);
-    throw new Error('Failed to search files');
   }
 }
 
@@ -504,34 +615,113 @@ async function getTeamChannels(teamId, userToken = null) {
   }
 }
 
-// ============== USER FUNCTIONS ==============
-
-// Search for a contact's email by name
-async function searchContactEmail(name, userToken = null) {
+/**
+ * 💬 Send Teams chat message to a user
+ */
+async function sendTeamsMessage(recipientName, message, userToken = null) {
   try {
-    const nameParts = name.trim().split(/\s+/);
-    let firstName, lastName;
+    console.log(`💬 Sending Teams message to: ${recipientName}`);
     
-    if (nameParts.length < 2) {
-      firstName = nameParts[0];
-      lastName = nameParts[0];
-    } else {
-      firstName = nameParts[0];
-      lastName = nameParts.slice(1).join(' ');
+    if (!userToken) throw new Error('User token required for Teams messaging');
+    
+    const client = await getGraphClient(userToken);
+    
+    // Step 1: Find recipient's user ID
+    console.log('   → Searching for recipient...');
+    const recipientResults = await searchContactEmail(recipientName, userToken);
+    
+    if (!recipientResults || recipientResults.length === 0) {
+      throw new Error(`Could not find user: ${recipientName}`);
     }
     
-    const generatedEmail = generateEmailFromName(firstName, lastName);
+    const recipientEmail = recipientResults[0].email;
+    console.log(`   ✅ Found recipient email: ${recipientEmail}`);
     
-    return [{
-      name: `${firstName} ${lastName}`,
-      email: generatedEmail,
-      source: 'generated'
-    }];
+    // Step 2: Get recipient's user ID
+    const users = await client
+      .api('/users')
+      .filter(`mail eq '${recipientEmail}' or userPrincipalName eq '${recipientEmail}'`)
+      .select('id,displayName,mail,userPrincipalName')
+      .get();
+    
+    if (!users.value || users.value.length === 0) {
+      throw new Error(`Could not find user ID for: ${recipientEmail}`);
+    }
+    
+    const recipientUserId = users.value[0].id;
+    console.log(`   ✅ Found recipient ID: ${recipientUserId}`);
+    
+    // Step 3: Create or get existing chat
+    console.log('   → Creating/finding chat...');
+    const chatBody = {
+      chatType: 'oneOnOne',
+      members: [
+        {
+          '@odata.type': '#microsoft.graph.aadUserConversationMember',
+          roles: ['owner'],
+          'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${recipientUserId}')`
+        }
+      ]
+    };
+    
+    let chatId;
+    try {
+      const chat = await client.api('/chats').post(chatBody);
+      chatId = chat.id;
+      console.log(`   ✅ Chat created/found: ${chatId}`);
+    } catch (err) {
+      // If chat already exists, find it
+      console.log('   → Chat may already exist, searching...');
+      const chats = await client
+        .api('/me/chats')
+        .filter(`chatType eq 'oneOnOne'`)
+        .expand('members')
+        .get();
+      
+      // Find chat with this user
+      const existingChat = chats.value.find(chat => 
+        chat.members.some(member => member.userId === recipientUserId)
+      );
+      
+      if (existingChat) {
+        chatId = existingChat.id;
+        console.log(`   ✅ Found existing chat: ${chatId}`);
+      } else {
+        throw new Error('Could not create or find chat');
+      }
+    }
+    
+    // Step 4: Send message
+    console.log('   → Sending message...');
+    const messageBody = {
+      body: {
+        contentType: 'text',
+        content: message
+      }
+    };
+    
+    const sentMessage = await client
+      .api(`/chats/${chatId}/messages`)
+      .post(messageBody);
+    
+    console.log('   ✅ Message sent successfully');
+    
+    return {
+      success: true,
+      message: `Teams message sent to ${recipientResults[0].name}`,
+      recipientName: recipientResults[0].name,
+      recipientEmail: recipientEmail,
+      chatId: chatId,
+      messageId: sentMessage.id
+    };
+    
   } catch (error) {
-    console.error('Error searching contact:', error);
-    throw new Error(`Failed to find contact email for "${name}"`);
+    console.error('❌ Error sending Teams message:', error);
+    throw new Error(`Failed to send Teams message: ${error.message}`);
   }
 }
+
+// ============== USER FUNCTIONS ==============
 
 // Get user profile
 async function getUserProfile(userToken = null) {
@@ -552,9 +742,52 @@ async function getUserProfile(userToken = null) {
   }
 }
 
+// ============== SHAREPOINT FUNCTIONS ==============
+
+async function getRecentFiles(count = 10, userToken = null) {
+  try {
+    const client = await getGraphClient(userToken);
+    const files = await client
+      .api('/me/drive/recent')
+      .top(count)
+      .get();
+    
+    return files.value.map(file => ({
+      name: file.name,
+      webUrl: file.webUrl,
+      lastModified: new Date(file.lastModifiedDateTime).toLocaleString(),
+      size: formatFileSize(file.size),
+      type: file.file?.mimeType || 'folder'
+    }));
+  } catch (error) {
+    console.error('Error getting recent files:', error);
+    throw new Error('Failed to retrieve recent files');
+  }
+}
+
+async function searchFiles(query, userToken = null) {
+  try {
+    const client = await getGraphClient(userToken);
+    const files = await client
+      .api(`/me/drive/root/search(q='${query}')`)
+      .top(10)
+      .get();
+    
+    return files.value.map(file => ({
+      name: file.name,
+      webUrl: file.webUrl,
+      lastModified: new Date(file.lastModifiedDateTime).toLocaleString(),
+      size: formatFileSize(file.size)
+    }));
+  } catch (error) {
+    console.error('Error searching files:', error);
+    throw new Error('Failed to search files');
+  }
+}
+
 // ============== HELPER FUNCTIONS ==============
 
-// Generate email from first name and last name
+// Generate email from first name and last name (fallback)
 function generateEmailFromName(firstName, lastName) {
   const firstNameClean = firstName.trim().toLowerCase();
   const lastNameClean = lastName.trim().toLowerCase();
@@ -566,139 +799,12 @@ function generateEmailFromName(firstName, lastName) {
   return `${emailUsername}@${domain}`;
 }
 
-// Search for user by first and last name
-async function searchUserByName(firstName, lastName, userToken = null) {
-  try {
-    const generatedEmail = generateEmailFromName(firstName, lastName);
-    
-    return {
-      success: true,
-      displayName: `${firstName} ${lastName}`,
-      email: generatedEmail,
-      firstName: firstName,
-      lastName: lastName,
-      source: 'generated'
-    };
-  } catch (error) {
-    console.error('Error generating user email:', error);
-    throw new Error(`Failed to generate email for ${firstName} ${lastName}`);
-  }
-}
-
 function formatFileSize(bytes) {
   if (bytes === 0) return '0 Bytes';
   const k = 1024;
   const sizes = ['Bytes', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
-}
-
-// Format email body with HTML styling
-function formatEmailBodyHTML(messageContent, recipientFirstName, senderProfile) {
-  const now = new Date();
-  const dateStr = now.toLocaleDateString('en-US', { 
-    weekday: 'long', 
-    year: 'numeric', 
-    month: 'long', 
-    day: 'numeric' 
-  });
-  
-  // Clean and format the message content
-  let cleanedMessage = messageContent.trim();
-  
-  // Convert line breaks to HTML
-  cleanedMessage = cleanedMessage.replace(/\n/g, '<br>');
-  
-  // Build HTML email
-  const htmlBody = `
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      line-height: 1.6;
-      color: #333;
-      max-width: 600px;
-      margin: 0 auto;
-      padding: 20px;
-    }
-    .email-container {
-      background-color: #ffffff;
-      padding: 30px;
-      border-radius: 8px;
-    }
-    .greeting {
-      font-size: 16px;
-      margin-bottom: 20px;
-      color: #2c3e50;
-    }
-    .content {
-      font-size: 15px;
-      margin-bottom: 25px;
-      color: #34495e;
-      line-height: 1.8;
-    }
-    .signature {
-      margin-top: 30px;
-      padding-top: 20px;
-      border-top: 2px solid #e0e0e0;
-    }
-    .signature-name {
-      font-weight: 600;
-      font-size: 16px;
-      color: #2c3e50;
-      margin-bottom: 5px;
-    }
-    .signature-title {
-      font-size: 14px;
-      color: #7f8c8d;
-      margin-bottom: 3px;
-    }
-    .signature-contact {
-      font-size: 13px;
-      color: #95a5a6;
-      margin-top: 10px;
-    }
-    .footer {
-      margin-top: 30px;
-      padding-top: 15px;
-      border-top: 1px solid #ecf0f1;
-      font-size: 12px;
-      color: #95a5a6;
-      text-align: center;
-    }
-  </style>
-</head>
-<body>
-  <div class="email-container">
-    <div class="greeting">
-      Dear ${recipientFirstName},
-    </div>
-    
-    <div class="content">
-      ${cleanedMessage}
-    </div>
-    
-    <div class="signature">
-      <div class="signature-name">${senderProfile.displayName}</div>
-      ${senderProfile.jobTitle ? `<div class="signature-title">${senderProfile.jobTitle}</div>` : ''}
-      ${senderProfile.department ? `<div class="signature-title">${senderProfile.department}</div>` : ''}
-      <div class="signature-contact">
-        ${senderProfile.email}
-        ${senderProfile.officeLocation ? ` | ${senderProfile.officeLocation}` : ''}
-      </div>
-    </div>
-    
-    <div class="footer">
-      Sent on ${dateStr}
-    </div>
-  </div>
-</body>
-</html>
-  `.trim();
-  
-  return htmlBody;
 }
 
 module.exports = {
@@ -717,8 +823,7 @@ module.exports = {
   getTeamChannels,
   getUserProfile,
   searchContactEmail,
+  sendTeamsMessage,
   generateEmailFromName,
-  searchUserByName,
-  formatEmailBodyHTML,
   getSenderProfile
 };

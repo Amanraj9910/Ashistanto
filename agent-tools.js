@@ -8,13 +8,13 @@ const tools = [
     type: 'function',
     function: {
       name: 'search_contact_email',
-      description: 'Search for a person\'s email address by their name. Use this when user provides a name but not an email address.',
+      description: 'Search for a person\'s email address by their name. Searches personal contacts, People API, organization directory, and generates email as fallback.',
       parameters: {
         type: 'object',
         properties: {
           name: {
             type: 'string',
-            description: 'Person\'s name to search for'
+            description: 'Person\'s name to search for (first name, last name, or full name)'
           }
         },
         required: ['name']
@@ -60,13 +60,13 @@ const tools = [
     type: 'function',
     function: {
       name: 'send_email',
-      description: 'Send a plain text email with proper greeting and signature.',
+      description: 'Send an email with proper greeting and signature. Automatically finds recipient email from contacts/directory. Supports CC recipients.',
       parameters: {
         type: 'object',
         properties: {
           recipient_name: {
             type: 'string',
-            description: 'Recipient\'s full name (e.g., "Vansh Jain")'
+            description: 'Primary recipient\'s full name (e.g., "John Doe")'
           },
           subject: {
             type: 'string',
@@ -74,7 +74,13 @@ const tools = [
           },
           body: {
             type: 'string',
-            description: 'Plain text email body'
+            description: 'Plain text email body content'
+          },
+          cc_recipients: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional array of names to CC on the email (e.g., ["Jane Smith", "Bob Johnson"])',
+            default: []
           }
         },
         required: ['recipient_name', 'subject', 'body']
@@ -103,27 +109,61 @@ const tools = [
     type: 'function',
     function: {
       name: 'create_calendar_event',
-      description: 'Create a new calendar event or meeting with attendees.',
+      description: 'Create a calendar event or Microsoft Teams meeting with join link. Automatically finds attendee emails from contacts/directory.',
       parameters: {
         type: 'object',
         properties: {
-          subject: { type: 'string', description: 'Meeting subject' },
-          start: { type: 'string', description: 'Start date/time (ISO)' },
-          end: { type: 'string', description: 'End date/time (ISO)' },
-          location: { type: 'string', description: 'Meeting location', default: '' },
+          subject: { 
+            type: 'string', 
+            description: 'Meeting subject/title' 
+          },
+          start: { 
+            type: 'string', 
+            description: 'Start date and time in ISO format (e.g., "2024-12-25T10:00:00")' 
+          },
+          end: { 
+            type: 'string', 
+            description: 'End date and time in ISO format (e.g., "2024-12-25T11:00:00")' 
+          },
+          location: { 
+            type: 'string', 
+            description: 'Meeting location (optional, not needed for Teams meetings)', 
+            default: '' 
+          },
           attendeeNames: {
             type: 'array',
             items: { type: 'string' },
-            description: 'Array of attendee names',
+            description: 'Array of attendee names (will be automatically searched in contacts)',
             default: []
           },
           isTeamsMeeting: {
             type: 'boolean',
-            description: 'Set true for Teams meeting',
+            description: 'Set to true to create a Microsoft Teams meeting with join link. Falls back to regular meeting if Teams meeting creation fails.',
             default: false
           }
         },
         required: ['subject', 'start', 'end']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'send_teams_message',
+      description: 'Send a direct chat message to someone on Microsoft Teams. Automatically finds the person in contacts/directory and creates or finds the chat.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recipient_name: {
+            type: 'string',
+            description: 'Name of the person to message on Teams (e.g., "John Doe")'
+          },
+          message: {
+            type: 'string',
+            description: 'The message content to send'
+          }
+        },
+        required: ['recipient_name', 'message']
       }
     }
   },
@@ -135,7 +175,11 @@ const tools = [
       parameters: {
         type: 'object',
         properties: {
-          count: { type: 'number', default: 10 }
+          count: { 
+            type: 'number', 
+            description: 'Number of files to retrieve (default 10)',
+            default: 10 
+          }
         },
         required: []
       }
@@ -145,11 +189,14 @@ const tools = [
     type: 'function',
     function: {
       name: 'search_files',
-      description: 'Search for files in OneDrive/SharePoint.',
+      description: 'Search for files in OneDrive/SharePoint by name or content.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'Search query' }
+          query: { 
+            type: 'string', 
+            description: 'Search query (file name or content keywords)' 
+          }
         },
         required: ['query']
       }
@@ -159,16 +206,24 @@ const tools = [
     type: 'function',
     function: {
       name: 'get_teams',
-      description: 'Get list of Microsoft Teams the user is part of.',
-      parameters: { type: 'object', properties: {}, required: [] }
+      description: 'Get list of Microsoft Teams the user is a member of.',
+      parameters: { 
+        type: 'object', 
+        properties: {}, 
+        required: [] 
+      }
     }
   },
   {
     type: 'function',
     function: {
       name: 'get_user_profile',
-      description: 'Get user profile information.',
-      parameters: { type: 'object', properties: {}, required: [] }
+      description: 'Get the current user\'s profile information including name, email, job title, and location.',
+      parameters: { 
+        type: 'object', 
+        properties: {}, 
+        required: [] 
+      }
     }
   }
 ];
@@ -186,7 +241,8 @@ const functionMap = {
   search_files: graphTools.searchFiles,
   get_teams: graphTools.getTeams,
   get_user_profile: graphTools.getUserProfile,
-  search_contact_email: graphTools.searchContactEmail
+  search_contact_email: graphTools.searchContactEmail,
+  send_teams_message: graphTools.sendTeamsMessage  // ✅ NEW: Teams messaging
 };
 
 // ======================================
@@ -196,7 +252,7 @@ async function executeTool(functionName, args = {}, userToken = null) {
   const func = functionMap[functionName];
   if (!func) throw new Error(`Unknown function: ${functionName}`);
 
-  console.log(`🧩 Executing tool: ${functionName}`);
+  console.log(`\n🧩 Executing tool: ${functionName}`);
   console.log(`   Args:`, JSON.stringify(args, null, 2));
   console.log(`   Has userToken:`, !!userToken);
 
@@ -221,6 +277,7 @@ async function executeTool(functionName, args = {}, userToken = null) {
         params.push(args.recipient_name);
         params.push(args.subject);
         params.push(args.body);
+        params.push(args.cc_recipients || []);  // ✅ NEW: CC recipients support
         params.push(userToken);
         break;
         
@@ -235,7 +292,13 @@ async function executeTool(functionName, args = {}, userToken = null) {
         params.push(args.end);
         params.push(args.location || '');
         params.push(args.attendeeNames || []);
-        params.push(args.isTeamsMeeting || false);
+        params.push(args.isTeamsMeeting || false);  // ✅ ENHANCED: Teams meeting with link
+        params.push(userToken);
+        break;
+        
+      case 'send_teams_message':  // ✅ NEW: Teams direct messaging
+        params.push(args.recipient_name);
+        params.push(args.message);
         params.push(userToken);
         break;
         
@@ -268,7 +331,15 @@ async function executeTool(functionName, args = {}, userToken = null) {
 
     console.log(`   Calling function with ${params.length} parameters`);
     const result = await func(...params);
-    console.log(`   ✅ Result:`, JSON.stringify(result, null, 2));
+    
+    // ✅ IMPROVED: Pretty print result with truncation for large responses
+    const resultStr = JSON.stringify(result, null, 2);
+    if (resultStr.length > 500) {
+      console.log(`   ✅ Result (truncated):`, resultStr.substring(0, 500) + '...');
+    } else {
+      console.log(`   ✅ Result:`, resultStr);
+    }
+    
     return result;
   } catch (error) {
     console.error(`   ❌ Error executing ${functionName}:`, error.message);
