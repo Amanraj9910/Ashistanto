@@ -21,7 +21,7 @@ router.get('/callback', async (req, res) => {
     const code = req.query.code;
     const tokens = await getAccessTokenByAuthCode(code);
     
-    // Generate a session ID for this user
+    // Generate a session ID for this user 
     const sessionId = `session_${Date.now()}`;
     
     loggedInUser = {
