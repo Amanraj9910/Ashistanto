@@ -15,6 +15,12 @@ router.get('/login', async (req, res) => {
   res.redirect(url);
 });
 
+// Alternative route for /redirect (alias for /login)
+router.get('/redirect', async (req, res) => {
+  const url = await getAuthUrl();
+  res.redirect(url);
+});
+
 // Step 2: Handle Microsoft redirect
 router.get('/callback', async (req, res) => {
   try {

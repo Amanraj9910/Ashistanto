@@ -9,11 +9,15 @@ const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const wav = require('wav');
 
+// Set ffmpeg path explicitly for Windows
+const ffmpegPath = process.env.FFMPEG_PATH || 'C:\\ffmpeg\\bin\\ffmpeg.exe';
+ffmpeg.setFfmpegPath(ffmpegPath);
+
 // Import authentication router
 const { router: authRouter, userTokenStore } = require('./auth');
 
 const app = express();
-const upload = multer({ 
+const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB limit
 });
@@ -61,20 +65,20 @@ const conversationSessions = new Map();
 app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
   const tempWebm = path.join(__dirname, `temp_${Date.now()}.webm`);
   const tempWav = path.join(__dirname, `temp_${Date.now()}.wav`);
-  
+
   try {
     console.log('\n=== Voice Processing Started ===');
-    
+
     if (!req.file) {
       throw new Error('No audio file uploaded');
     }
-    
+
     // Get or create session ID
     const sessionId = req.body.sessionId || 'default';
     if (!conversationSessions.has(sessionId)) {
       conversationSessions.set(sessionId, []);
     }
-    
+
     const audioBuffer = req.file.buffer;
     console.log('✓ Audio received:', {
       size: audioBuffer.length,
@@ -108,11 +112,11 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
     console.log('🤖 Querying AI agent...');
     const conversationHistory = conversationSessions.get(sessionId);
     const userToken = userTokenStore.get(sessionId);
-    
+
     if (!userToken) {
       console.warn('⚠️  No user token found for session:', sessionId);
     }
-    
+
     const agentResponse = await queryAgent(transcript, conversationHistory, sessionId, userToken);
     console.log('✓ Agent Response:', agentResponse);
 
@@ -136,15 +140,15 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
     });
   } catch (error) {
     console.error('❌ Error:', error.message);
-    
+
     // Clean up temp files on error
     [tempWebm, tempWav].forEach(file => {
       if (fs.existsSync(file)) {
-        try { fs.unlinkSync(file); } catch (e) {}
+        try { fs.unlinkSync(file); } catch (e) { }
       }
     });
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: error.message || 'Unknown error occurred'
     });
   }
@@ -170,26 +174,16 @@ function convertToWav(inputPath, outputPath) {
   });
 }
 
-// Speech-to-Text using Azure Speech Services
+// Speech-to-Text using Azure Speech Services (Single-shot recognition)
 async function speechToText(wavBuffer) {
   return new Promise((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      if (!isResolved) {
-        isResolved = true;
-        if (recognizer) recognizer.close();
-        reject(new Error('Speech recognition timeout. Please try speaking again.'));
-      }
-    }, 20000);
-
-    let isResolved = false;
     let recognizer = null;
-    
+
     try {
       const speechKey = process.env.AZURE_SPEECH_KEY;
       const speechRegion = process.env.AZURE_SPEECH_REGION;
 
       if (!speechKey || !speechRegion) {
-        clearTimeout(timeout);
         reject(new Error('Azure Speech credentials not configured in .env file'));
         return;
       }
@@ -197,13 +191,12 @@ async function speechToText(wavBuffer) {
       console.log('  → Initializing Azure Speech SDK...');
       const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
       speechConfig.speechRecognitionLanguage = 'en-US';
-      speechConfig.outputFormat = sdk.OutputFormat.Detailed;
 
       console.log('  → Creating audio config from WAV buffer...');
-      
+
       // Create audio stream from WAV buffer
       const pushStream = sdk.AudioInputStream.createPushStream();
-      
+
       // Skip WAV header (first 44 bytes) and push the raw PCM data
       const pcmData = wavBuffer.slice(44);
       pushStream.write(pcmData);
@@ -212,83 +205,37 @@ async function speechToText(wavBuffer) {
       const audioConfig = sdk.AudioConfig.fromStreamInput(pushStream);
       recognizer = new sdk.SpeechRecognizer(speechConfig, audioConfig);
 
-      console.log('  → Starting recognition...');
+      console.log('  → Starting single-shot recognition...');
 
-      let fullText = '';
-
-      recognizer.recognizing = (s, e) => {
-        if (e.result.text) {
-          console.log(`  → Recognizing: "${e.result.text}"`);
-        }
-      };
-
-      recognizer.recognized = (s, e) => {
-        if (e.result.reason === sdk.ResultReason.RecognizedSpeech) {
-          console.log(`  ✓ Recognized: "${e.result.text}"`);
-          fullText += e.result.text + ' ';
-        } else if (e.result.reason === sdk.ResultReason.NoMatch) {
-          console.log('  ⚠ No speech could be recognized');
-        }
-      };
-
-      recognizer.canceled = (s, e) => {
-        console.log(`  ❌ Canceled: ${e.reason}`);
-        
-        if (e.reason === sdk.CancellationReason.Error) {
-          console.error(`  ❌ Error details: ${e.errorDetails}`);
-          if (!isResolved) {
-            clearTimeout(timeout);
-            isResolved = true;
-            recognizer.close();
-            reject(new Error(`Speech recognition failed: ${e.errorDetails}`));
-          }
-        }
-      };
-
-      recognizer.sessionStopped = (s, e) => {
-        console.log('  → Session stopped');
-        if (!isResolved) {
-          clearTimeout(timeout);
-          isResolved = true;
+      // Single-shot recognition - recognizes once and returns
+      recognizer.recognizeOnceAsync(
+        (result) => {
           recognizer.close();
-          
-          const trimmedText = fullText.trim();
-          if (trimmedText) {
-            resolve(trimmedText);
-          } else {
-            reject(new Error('No speech was detected. Please check your microphone and speak clearly.'));
-          }
-        }
-      };
 
-      // Start continuous recognition
-      recognizer.startContinuousRecognitionAsync(
-        () => {
-          console.log('  ✓ Recognition started successfully');
-          
-          // Stop after 15 seconds
-          setTimeout(() => {
-            if (!isResolved) {
-              console.log('  → Stopping recognition...');
-              recognizer.stopContinuousRecognitionAsync(
-                () => console.log('  ✓ Recognition stopped'),
-                (err) => console.error('  ❌ Error stopping recognition:', err)
-              );
+          if (result.reason === sdk.ResultReason.RecognizedSpeech) {
+            console.log(`  ✓ Recognized: "${result.text}"`);
+            resolve(result.text);
+          } else if (result.reason === sdk.ResultReason.NoMatch) {
+            console.log('  ⚠ No speech could be recognized');
+            reject(new Error('No speech was detected. Please speak clearly and try again.'));
+          } else if (result.reason === sdk.ResultReason.Canceled) {
+            const cancellation = sdk.CancellationDetails.fromResult(result);
+            console.error(`  ❌ Canceled: ${cancellation.reason}`);
+            if (cancellation.reason === sdk.CancellationReason.Error) {
+              reject(new Error(`Speech recognition error: ${cancellation.errorDetails}`));
+            } else {
+              reject(new Error('Speech recognition was canceled.'));
             }
-          }, 15000);
+          }
         },
         (err) => {
-          console.error('  ❌ Failed to start recognition:', err);
-          if (!isResolved) {
-            clearTimeout(timeout);
-            isResolved = true;
-            reject(new Error('Failed to start speech recognition: ' + err));
-          }
+          recognizer.close();
+          console.error('  ❌ Recognition error:', err);
+          reject(new Error('Speech recognition failed: ' + err));
         }
       );
 
     } catch (error) {
-      clearTimeout(timeout);
       console.error('  ❌ Exception:', error.message);
       if (recognizer) recognizer.close();
       reject(new Error('Speech recognition initialization failed: ' + error.message));
@@ -339,7 +286,30 @@ async function queryAgent(text, conversationHistory = [], sessionId = 'default',
 CURRENT DATE & TIME: ${currentDate} ${currentTime}
 Today is: ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
 
+================================================================================
+📅 MEETING RULE — DEFAULT TO TEAMS MEETING
+================================================================================
+When the user schedules ANY meeting, ALWAYS set:
+isTeamsMeeting = true
+
+UNLESS the user clearly says:
+- "offline meeting"
+- "in person"
+- "physical room"
+- "not on teams"
+- "not online"
+
+So by default, meetings must be created as Teams meetings.
+
+================================================================================
+📤 MEETING LINK SHARING RULE
+================================================================================
+After creating a Teams meeting, tell the user:
+"The Teams meeting link will be shared automatically with all participants."
+
+================================================================================
 📧 EMAIL SENDING - PROFESSIONAL FORMATTING:
+================================================================================
 When user wants to send email, ALWAYS use the send_email tool.
 
 Examples:
@@ -358,7 +328,16 @@ YOU MUST:
 ✓ Create clear subject
 ✓ Write natural body text
 
+⚠️ CONTACT NOT FOUND HANDLING:
+If send_email, send_teams_message, or search_contact_email returns notFound=true or found=false:
+1. Tell the user the contact was not found
+2. Ask them to verify the spelling of the name
+3. OR ask them to provide the email address directly
+Example response: "I couldn't find anyone named 'aman' in the directory. Could you check the spelling or provide their email address?"
+
+================================================================================
 📅 MEETING SCHEDULING - WITH MULTIPLE ATTENDEES:
+================================================================================
 When user wants to schedule meeting, ALWAYS use the create_calendar_event tool.
 
 DATE/TIME CALCULATIONS:
@@ -373,6 +352,11 @@ DURATION DEFAULTS:
 - "1 hour" → add 60 minutes to start time
 - No duration specified → default 1 hour
 
+📌 DEFAULT TEAM MEETING (MOST IMPORTANT UPDATE)
+SET:
+isTeamsMeeting = true
+UNLESS user explicitly denies.
+
 Examples:
 User: "schedule meet with jatin raj 3 PM today for 30 min"
 YOU MUST CALL: create_calendar_event(
@@ -380,7 +364,7 @@ YOU MUST CALL: create_calendar_event(
   start="${currentDate}T15:00:00",
   end="${currentDate}T15:30:00",
   attendeeNames=["jatin raj"],
-  isTeamsMeeting=false
+  isTeamsMeeting=true
 )
 
 User: "set up teams call with john and sarah tomorrow 10 AM"
@@ -392,15 +376,36 @@ YOU MUST CALL: create_calendar_event(
   isTeamsMeeting=true
 )
 
+================================================================================
+🗑️ DELETION FEATURES:
+================================================================================
+DELETE EMAIL:
+- "delete the email I just sent" → delete_sent_email()
+- "delete the email about meeting" → delete_sent_email(subject="meeting")
+- "delete the email to john" → First search_contact_email("john"), then delete_sent_email(recipient_email="john@...")
+
+DELETE CALENDAR EVENT:
+- "delete the meeting with raj" → delete_calendar_event(subject="raj")
+- "cancel the standup meeting" → delete_calendar_event(subject="standup")
+
+DELETE TEAMS MESSAGE:
+- "delete the teams message I just sent" → delete_teams_message(chat_id=..., message_id=...)
+
+================================================================================
 🚨 CRITICAL: YOU MUST USE TOOLS!
+================================================================================
 - For email requests → CALL send_email tool
 - For meeting requests → CALL create_calendar_event tool
 - For calendar questions → CALL get_calendar_events tool
 - For email questions → CALL get_recent_emails tool
+- For deleting emails → CALL delete_sent_email tool
+- For deleting meetings → CALL delete_calendar_event tool
+- For Teams messages → CALL send_teams_message or delete_teams_message tool
 
 DO NOT just respond with text. ALWAYS call the appropriate tool when user requests an action.
 
-Keep voice responses short (1-2 sentences) after tool execution.`
+Keep voice responses short (1-2 sentences) after tool execution.
+`
       }
     ];
 
@@ -434,26 +439,26 @@ Keep voice responses short (1-2 sentences) after tool execution.`
       toolCallCount: responseMessage.tool_calls?.length || 0,
       content: responseMessage.content || '(no content)'
     });
-    
+
     // Check if AI wants to use tools
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       console.log('  → AI requesting tool execution:', responseMessage.tool_calls.map(tc => tc.function.name).join(', '));
-      
+
       // Add AI's response to messages
       messages.push(responseMessage);
-      
+
       // Execute all requested tools
       for (const toolCall of responseMessage.tool_calls) {
         const functionName = toolCall.function.name;
         const functionArgs = JSON.parse(toolCall.function.arguments);
-        
+
         console.log(`  → Executing ${functionName} with args:`, JSON.stringify(functionArgs, null, 2));
-        
+
         try {
           // ✅ FIXED: Pass userToken as third parameter to executeTool
           const toolResult = await executeTool(functionName, functionArgs, userToken);
           console.log(`  ✓ ${functionName} completed:`, toolResult);
-          
+
           // Add tool result to messages
           messages.push({
             role: 'tool',
@@ -469,7 +474,7 @@ Keep voice responses short (1-2 sentences) after tool execution.`
           });
         }
       }
-      
+
       // Second call - AI formulates final response with tool results
       console.log('  → Getting final response from AI...');
       result = await client.chat.completions.create({
@@ -478,7 +483,7 @@ Keep voice responses short (1-2 sentences) after tool execution.`
         max_tokens: 300,
         temperature: 0.7
       });
-      
+
       responseMessage = result.choices[0].message;
       console.log('  ✓ Final response:', responseMessage.content);
     } else {
@@ -527,7 +532,7 @@ async function textToSpeech(text) {
 
       const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
       speechConfig.speechSynthesisVoiceName = 'en-US-JennyNeural';
-      speechConfig.speechSynthesisOutputFormat = 
+      speechConfig.speechSynthesisOutputFormat =
         sdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3;
 
       const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
@@ -634,7 +639,7 @@ app.listen(PORT, () => {
   ${process.env.AZURE_SPEECH_KEY ? '✓' : '✗'} Azure Speech Service ${process.env.AZURE_SPEECH_REGION ? `(${process.env.AZURE_SPEECH_REGION})` : ''}
   ${process.env.AZURE_OPENAI_KEY ? '✓' : '✗'} Azure OpenAI ${process.env.AZURE_OPENAI_DEPLOYMENT ? `(${process.env.AZURE_OPENAI_DEPLOYMENT})` : ''}
   
-  ${!process.env.AZURE_SPEECH_KEY || !process.env.AZURE_OPENAI_KEY ? 
-    '⚠️  Please configure your .env file with Azure credentials\n' : '✓ All services configured - Ready to use!\n'}
+  ${!process.env.AZURE_SPEECH_KEY || !process.env.AZURE_OPENAI_KEY ?
+      '⚠️  Please configure your .env file with Azure credentials\n' : '✓ All services configured - Ready to use!\n'}
   `);
 });
