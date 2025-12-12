@@ -76,7 +76,7 @@ jobs:
         id: deploy-to-webapp
         uses: azure/webapps-deploy@v3
         with:
-          app-name: 'Microsoft-Agent'
+          app-name: 'ashistanto'
           slot-name: 'Production'
           package: .
 
@@ -88,7 +88,7 @@ jobs:
           inlineScript: |
             az webapp config appsettings set \
               --resource-group 'AI-102' \
-              --name 'Microsoft-Agent' \
+              --name 'ashistanto' \
               --settings \
                 AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
                 AZURE_SPEECH_REGION="${{ secrets.AZURE_SPEECH_REGION }}" \

@@ -36,7 +36,7 @@ async function getAuthUrl() {
   if (process.env.REDIRECT_URI) {
     redirectUri = process.env.REDIRECT_URI;
   } else if (process.env.NODE_ENV === 'production') {
-    redirectUri = 'https://microsoft-agent-aubbhefsbzagdhha.eastus-01.azurewebsites.net/auth/callback';
+    redirectUri = 'https://ashistanto-bhc0fpeugkd9fqft.canadacentral-01.azurewebsites.net/auth/callback';
   } else {
     redirectUri = `http://localhost:${process.env.PORT || 3000}/auth/callback`;
   }
