@@ -9,9 +9,16 @@ const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const wav = require('wav');
 
-// Set ffmpeg path explicitly for Windows
-const ffmpegPath = process.env.FFMPEG_PATH || 'C:\\ffmpeg\\bin\\ffmpeg.exe';
-ffmpeg.setFfmpegPath(ffmpegPath);
+// Set ffmpeg path based on environment
+let ffmpegPath;
+if (process.env.NODE_ENV === 'production') {
+  // On Azure Linux, ffmpeg is in PATH
+  ffmpeg.setFfmpegPath('ffmpeg');
+} else {
+  // For local Windows development
+  ffmpegPath = process.env.FFMPEG_PATH || 'C:\\ffmpeg\\bin\\ffmpeg.exe';
+  ffmpeg.setFfmpegPath(ffmpegPath);
+}
 
 // Import authentication router
 const { router: authRouter, userTokenStore } = require('./auth');
