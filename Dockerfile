@@ -14,7 +14,7 @@ RUN apt-get update && apt-get install -y \
 COPY package*.json ./
 
 # Install dependencies (production only)
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 # Production stage
 FROM node:18-bullseye
