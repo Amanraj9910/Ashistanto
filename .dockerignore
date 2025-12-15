@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log
+.git
+.gitignore
+.env
+.env.local
+.vscode
+backup
+img
+test-azure.js
+test-graph.js
+Graph-setup.md
+AzureCLI.msi
+.github
+.DS_Store

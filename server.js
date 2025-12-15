@@ -11,13 +11,15 @@ const wav = require('wav');
 
 // Set ffmpeg path based on environment
 let ffmpegPath;
-if (process.env.NODE_ENV === 'production') {
-  // On Azure Linux, ffmpeg is in PATH
+if (process.env.NODE_ENV === 'production' || process.env.DOCKER_ENV) {
+  // In Docker and Azure Linux, ffmpeg is in PATH
   ffmpeg.setFfmpegPath('ffmpeg');
+  console.log('✓ Using system FFmpeg (Docker/Linux)');
 } else {
   // For local Windows development
   ffmpegPath = process.env.FFMPEG_PATH || 'C:\\ffmpeg\\bin\\ffmpeg.exe';
   ffmpeg.setFfmpegPath(ffmpegPath);
+  console.log(`✓ Using custom FFmpeg path: ${ffmpegPath}`);
 }
 
 // Import authentication router
