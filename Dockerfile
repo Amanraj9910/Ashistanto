@@ -21,10 +21,11 @@ FROM node:18-bullseye
 
 WORKDIR /app
 
-# Install ffmpeg and curl (for health check) in production image
+# Install ffmpeg, curl (for health check), and other runtime dependencies
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     curl \
+    ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy node modules from builder
@@ -34,6 +35,7 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY package*.json ./
 COPY server.js .
 COPY auth.js .
+COPY tts-service.js .
 COPY agent-tools.js .
 COPY graph-tools.js .
 COPY public/ ./public/
@@ -48,6 +50,14 @@ EXPOSE 3000
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV DOCKER_ENV=true
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:3000/api/config || exit 1
+
+# Start application
+CMD ["node", "server.js"]
 ENV DOCKER_ENV=true
 
 # Health check

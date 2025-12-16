@@ -8,6 +8,8 @@ const fs = require('fs');
 const path = require('path');
 const ffmpeg = require('fluent-ffmpeg');
 const wav = require('wav');
+const graphTools = require('./graph-tools');
+const ttsService = require('./tts-service');
 
 // Set ffmpeg path based on environment
 let ffmpegPath;
@@ -45,6 +47,22 @@ app.get('/api/config', (req, res) => {
   });
 });
 
+// Get available voice accents/languages
+app.get('/api/voices', (req, res) => {
+  const voices = ttsService.getAvailableVoices();
+  const formattedVoices = Object.entries(voices).map(([key, value]) => ({
+    id: key,
+    name: value.displayName,
+    voiceName: value.name,
+    language: value.language
+  }));
+  
+  res.json({
+    voices: formattedVoices,
+    default: 'american'
+  });
+});
+
 // Clear conversation history endpoint
 app.post('/api/clear-session', express.json(), (req, res) => {
   const sessionId = req.body.sessionId;
@@ -67,6 +85,64 @@ app.get('/api/debug/sessions', (req, res) => {
   res.json(sessions);
 });
 
+// Get user profile info (name, email, etc)
+app.get('/api/user-profile', async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId;
+    if (!sessionId || !userTokenStore.has(sessionId)) {
+      return res.status(401).json({ error: 'No valid session' });
+    }
+
+    const token = userTokenStore.get(sessionId);
+    const profileInfo = await graphTools.getSenderProfile(token);
+    
+    res.json({
+      displayName: profileInfo.displayName,
+      email: profileInfo.email,
+      firstName: profileInfo.displayName.split(' ')[0]
+    });
+  } catch (err) {
+    console.error('Error fetching user profile:', err);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// Get user profile photo
+app.get('/api/user-photo', async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId;
+    console.log('📷 Photo request for session:', sessionId);
+    
+    if (!sessionId || !userTokenStore.has(sessionId)) {
+      console.warn('❌ Invalid session for photo request');
+      return res.status(401).json({ error: 'No valid session' });
+    }
+
+    const token = userTokenStore.get(sessionId);
+    console.log('📷 Fetching photo with token...');
+    
+    const photoBuffer = await graphTools.getUserProfilePhoto(token);
+    console.log('📷 Photo buffer returned, type:', typeof photoBuffer, 'length:', photoBuffer ? photoBuffer.length : 'null');
+    
+    if (!photoBuffer) {
+      console.warn('⚠️ No photo buffer returned');
+      return res.status(404).json({ error: 'No profile photo found' });
+    }
+
+    if (Buffer.isBuffer(photoBuffer)) {
+      console.log('✅ Photo is a proper Buffer, size:', photoBuffer.length);
+    } else {
+      console.warn('⚠️ Photo is not a Buffer, type:', typeof photoBuffer);
+    }
+
+    res.set('Content-Type', 'image/jpeg');
+    res.send(photoBuffer);
+  } catch (err) {
+    console.error('❌ Error fetching user photo:', err);
+    res.status(500).json({ error: 'Failed to fetch user photo' });
+  }
+});
+
 // Store conversation history per session (in production, use database)
 const conversationSessions = new Map();
 
@@ -84,6 +160,9 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
 
     // Get or create session ID
     const sessionId = req.body.sessionId || 'default';
+    const accent = req.body.accent || 'american';
+    const language = req.body.language || 'en-US';
+
     if (!conversationSessions.has(sessionId)) {
       conversationSessions.set(sessionId, []);
     }
@@ -92,8 +171,15 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
     console.log('✓ Audio received:', {
       size: audioBuffer.length,
       type: req.file.mimetype,
-      sessionId: sessionId
+      sessionId: sessionId,
+      accent: accent,
+      language: language
     });
+
+    // Validate accent
+    if (!ttsService.isValidAccent(accent)) {
+      throw new Error(`Invalid accent: ${accent}. Valid options: american, british, japanese`);
+    }
 
     // Save WebM file
     fs.writeFileSync(tempWebm, audioBuffer);
@@ -129,9 +215,9 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
     const agentResponse = await queryAgent(transcript, conversationHistory, sessionId, userToken);
     console.log('✓ Agent Response:', agentResponse);
 
-    // Step 3: Text-to-Speech
-    console.log('🔊 Generating speech...');
-    const audioData = await textToSpeech(agentResponse);
+    // Step 3: Text-to-Speech with selected accent
+    console.log(`🔊 Generating speech with ${ttsService.getVoiceInfo(accent).displayName}...`);
+    const audioData = await ttsService.synthesizeText(agentResponse, accent);
     console.log('✓ Audio generated, size:', audioData.length);
 
     // Clean up temp files
@@ -527,55 +613,16 @@ Keep voice responses short (1-2 sentences) after tool execution.
 
 // Text-to-Speech using Azure Speech Services
 async function textToSpeech(text) {
-  return new Promise((resolve, reject) => {
-    try {
-      const speechKey = process.env.AZURE_SPEECH_KEY;
-      const speechRegion = process.env.AZURE_SPEECH_REGION;
-
-      if (!speechKey || !speechRegion) {
-        reject(new Error('Azure Speech credentials not configured in .env file'));
-        return;
-      }
-
-      console.log('  → Initializing text-to-speech...');
-
-      const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
-      speechConfig.speechSynthesisVoiceName = 'en-US-JennyNeural';
-      speechConfig.speechSynthesisOutputFormat =
-        sdk.SpeechSynthesisOutputFormat.Audio16Khz32KBitRateMonoMp3;
-
-      const synthesizer = new sdk.SpeechSynthesizer(speechConfig, null);
-
-      synthesizer.speakTextAsync(
-        text,
-        (result) => {
-          if (result.reason === sdk.ResultReason.SynthesizingAudioCompleted) {
-            console.log('  ✓ Speech synthesis completed');
-            const audioData = Buffer.from(result.audioData);
-            synthesizer.close();
-            resolve(audioData);
-          } else {
-            console.error('  ❌ Speech synthesis failed:', result.errorDetails);
-            synthesizer.close();
-            reject(new Error('Speech synthesis failed: ' + result.errorDetails));
-          }
-        },
-        (error) => {
-          console.error('  ❌ Speech synthesis error:', error);
-          synthesizer.close();
-          reject(new Error('Speech synthesis error: ' + error));
-        }
-      );
-    } catch (error) {
-      reject(new Error('Failed to initialize speech synthesis: ' + error.message));
-    }
-  });
+  // Deprecated: Use ttsService.synthesizeText() instead
+  // This function is kept for backwards compatibility only
+  console.warn('⚠️  textToSpeech() is deprecated, use ttsService.synthesizeText() instead');
+  return ttsService.synthesizeText(text, 'american');
 }
 
 // Endpoint to process text messages
 app.post('/api/text-message', express.json(), async (req, res) => {
   try {
-    const { text, sessionId } = req.body;
+    const { text, sessionId, language, accent } = req.body;
 
     if (!text || !text.trim()) {
       return res.status(400).json({ error: 'Text message is required' });
@@ -585,9 +632,17 @@ app.post('/api/text-message', express.json(), async (req, res) => {
       return res.status(400).json({ error: 'Session ID is required' });
     }
 
+    const selectedAccent = accent || 'american';
+    
+    // Validate accent
+    if (!ttsService.isValidAccent(selectedAccent)) {
+      return res.status(400).json({ error: `Invalid accent: ${selectedAccent}` });
+    }
+
     console.log('\n=== Text Message Received ===');
     console.log(`✓ Message: "${text}"`);
     console.log(`✓ Session ID: ${sessionId}`);
+    console.log(`✓ Accent: ${selectedAccent}`);
 
     // Retrieve user token from session store
     const userToken = userTokenStore.get(sessionId);
