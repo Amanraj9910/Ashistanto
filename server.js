@@ -143,6 +143,64 @@ app.get('/api/user-photo', async (req, res) => {
   }
 });
 
+// Get user profile info (name, email, etc)
+app.get('/api/user-profile', async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId;
+    if (!sessionId || !userTokenStore.has(sessionId)) {
+      return res.status(401).json({ error: 'No valid session' });
+    }
+
+    const token = userTokenStore.get(sessionId);
+    const profileInfo = await graphTools.getSenderProfile(token);
+    
+    res.json({
+      displayName: profileInfo.displayName,
+      email: profileInfo.email,
+      firstName: profileInfo.displayName.split(' ')[0]
+    });
+  } catch (err) {
+    console.error('Error fetching user profile:', err);
+    res.status(500).json({ error: 'Failed to fetch user profile' });
+  }
+});
+
+// Get user profile photo
+app.get('/api/user-photo', async (req, res) => {
+  try {
+    const sessionId = req.query.sessionId;
+    console.log('📷 Photo request for session:', sessionId);
+    
+    if (!sessionId || !userTokenStore.has(sessionId)) {
+      console.warn('❌ Invalid session for photo request');
+      return res.status(401).json({ error: 'No valid session' });
+    }
+
+    const token = userTokenStore.get(sessionId);
+    console.log('📷 Fetching photo with token...');
+    
+    const photoBuffer = await graphTools.getUserProfilePhoto(token);
+    console.log('📷 Photo buffer returned, type:', typeof photoBuffer, 'length:', photoBuffer ? photoBuffer.length : 'null');
+    
+    if (!photoBuffer) {
+      console.warn('⚠️ No photo buffer returned');
+      return res.status(404).json({ error: 'No profile photo found' });
+    }
+
+    if (Buffer.isBuffer(photoBuffer)) {
+      console.log('✅ Photo is a proper Buffer, size:', photoBuffer.length);
+    } else {
+      console.warn('⚠️ Photo is not a Buffer, type:', typeof photoBuffer);
+    }
+
+    res.set('Content-Type', 'image/jpeg');
+    res.send(photoBuffer);
+  } catch (err) {
+    console.error('❌ Error fetching user photo:', err);
+    res.status(500).json({ error: 'Failed to fetch user photo' });
+  }
+});
+
 // Store conversation history per session (in production, use database)
 const conversationSessions = new Map();
 
