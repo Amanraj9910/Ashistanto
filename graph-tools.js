@@ -1458,6 +1458,85 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
   }
 }
 
+// Get user profile photo
+async function getUserProfilePhoto(userToken = null) {
+  try {
+    const client = await getGraphClient(userToken);
+    console.log('🖼️ Calling Graph API for /me/photo/$value');
+    
+    const photoResponse = await client.api('/me/photo/$value').get();
+    
+    console.log('📦 Response received, type:', typeof photoResponse);
+    console.log('📦 Is Buffer?:', Buffer.isBuffer(photoResponse));
+    console.log('📦 Is Uint8Array?:', photoResponse instanceof Uint8Array);
+    console.log('📦 Constructor name:', photoResponse?.constructor?.name);
+    
+    let buffer;
+    
+    // Handle Blob (from browser fetch)
+    if (typeof Blob !== 'undefined' && photoResponse instanceof Blob) {
+      console.log('📦 Response is a Blob - converting to Buffer...');
+      // Convert Blob to Buffer
+      const arrayBuffer = await photoResponse.arrayBuffer();
+      buffer = Buffer.from(arrayBuffer);
+      console.log('✅ Blob converted to Buffer, size:', buffer.length);
+      return buffer;
+    }
+    
+    // Handle Buffer
+    if (Buffer.isBuffer(photoResponse)) {
+      buffer = photoResponse;
+      console.log('✅ Response is a Buffer');
+      return buffer;
+    }
+    
+    // Handle Uint8Array
+    if (photoResponse instanceof Uint8Array) {
+      buffer = Buffer.from(photoResponse);
+      console.log('✅ Converted Uint8Array to Buffer');
+      return buffer;
+    }
+    
+    // Handle Stream
+    if (photoResponse && photoResponse._readableState) {
+      console.log('📦 Response is a Stream - converting to Buffer...');
+      const chunks = [];
+      
+      return new Promise((resolve, reject) => {
+        photoResponse.on('data', (chunk) => {
+          chunks.push(chunk);
+        });
+        photoResponse.on('end', () => {
+          buffer = Buffer.concat(chunks);
+          console.log('✅ Stream converted to Buffer, size:', buffer.length);
+          resolve(buffer);
+        });
+        photoResponse.on('error', (err) => {
+          console.error('❌ Stream error:', err);
+          reject(err);
+        });
+      });
+    }
+    
+    // Handle other objects
+    if (typeof photoResponse === 'object' && photoResponse !== null) {
+      if (photoResponse.data) {
+        buffer = Buffer.from(photoResponse.data);
+        console.log('✅ Extracted data from object wrapper');
+        return buffer;
+      }
+    }
+    
+    // Fallback
+    console.warn('⚠️ Unknown response type:', photoResponse?.constructor?.name);
+    return null;
+  } catch (error) {
+    console.error('❌ Error getting user profile photo:', error.message);
+    console.error('Error code:', error.code);
+    return null;
+  }
+}
+
 module.exports = {
   getAuthUrl,
   getAccessTokenByAuthCode,
@@ -1482,5 +1561,6 @@ module.exports = {
   getSenderProfile,
   getRecentSentEmails,
   deleteEmail,
-  deleteSentEmail
+  deleteSentEmail,
+  getUserProfilePhoto
 };
