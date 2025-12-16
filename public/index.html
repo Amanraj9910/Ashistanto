@@ -81,47 +81,7 @@
         }
       }, [showProfileMenu]);
 
-      useEffect(() => {
-        fetch('/api/config')
-          .then(res => res.json())
-          .then(data => {
-            setIsConfigured(data.configured);
-            if (!data.configured) {
-              setError('⚠️ Server not configured. Please set up your .env file with Azure credentials.');
-            }
-          })
-          .catch(err => {
-            setError('❌ Failed to connect to server. Make sure the server is running.');
-          });
-      }, []);
-
-      useEffect(() => {
-        const checkLogin = async () => {
-          const storedSessionId = localStorage.getItem('userSessionId');
-
-          if (storedSessionId) {
-            try {
-              const response = await fetch(`/auth/session-token/${storedSessionId}`);
-              if (response.ok) {
-                setSessionId(storedSessionId);
-                setIsLoggedIn(true);
-                // Fetch user info including photo
-                await fetchUserInfoWithPhoto(storedSessionId);
-                // Fetch user info including photo
-                await fetchUserInfoWithPhoto(storedSessionId);
-                return;
-              }
-            } catch (err) {
-              console.log('Session expired or invalid');
-            }
-          }
-
-          console.log('No valid session found. Redirecting to login...');
-          window.location.href = '/auth/login';
-        };
-
-        checkLogin();
-      }, []);
+      // Define fetchUserInfoWithPhoto BEFORE it's used in useEffect
       const fetchUserInfoWithPhoto = async (sessionId) => {
         try {
           // Fetch user profile from Graph API
@@ -169,6 +129,48 @@
           console.error('Error fetching user info:', err);
         }
       };
+
+      useEffect(() => {
+        fetch('/api/config')
+          .then(res => res.json())
+          .then(data => {
+            setIsConfigured(data.configured);
+            if (!data.configured) {
+              setError('⚠️ Server not configured. Please set up your .env file with Azure credentials.');
+            }
+          })
+          .catch(err => {
+            setError('❌ Failed to connect to server. Make sure the server is running.');
+          });
+      }, []);
+
+      useEffect(() => {
+        const checkLogin = async () => {
+          const storedSessionId = localStorage.getItem('userSessionId');
+
+          if (storedSessionId) {
+            try {
+              const response = await fetch(`/auth/session-token/${storedSessionId}`);
+              if (response.ok) {
+                setSessionId(storedSessionId);
+                setIsLoggedIn(true);
+                // Fetch user info including photo
+                await fetchUserInfoWithPhoto(storedSessionId);
+                // Fetch user info including photo
+                await fetchUserInfoWithPhoto(storedSessionId);
+                return;
+              }
+            } catch (err) {
+              console.log('Session expired or invalid');
+            }
+          }
+
+          console.log('No valid session found. Redirecting to login...');
+          window.location.href = '/auth/login';
+        };
+
+        checkLogin();
+      }, []);
 
       const fetchUserInfo = async () => {
         try {
@@ -449,7 +451,7 @@
                 {/* Logo */}
                 <div className="flex items-center gap-3">
                <img
-  src="/img/Hosho Digital-Logo.jpg"
+  src="/img/Hosho DIgital-Logo.jpg"
   alt="Hosho Digital Logo"
   className="h-12 w-auto object-contain"
 />
