@@ -38,20 +38,227 @@
       const [selectedAccent, setSelectedAccent] = useState('american'); // Default: American
       const [showLanguageMenu, setShowLanguageMenu] = useState(false);
 
+      // Action preview/confirmation state
+      const [pendingAction, setPendingAction] = useState(null);
+      const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+      const [actionEdits, setActionEdits] = useState({});
+      const [isSubmittingAction, setIsSubmittingAction] = useState(false);
+      const [isEditingAction, setIsEditingAction] = useState(false);
+
+      // Inline Action Preview Card Component (renders in chat)
+      const ActionPreviewCard = ({ action, onConfirm, onCancel, onEdit, isSubmitting }) => {
+        const [localEdits, setLocalEdits] = useState({});
+        const [editMode, setEditMode] = useState(false);
+
+        if (!action) return null;
+
+        const details = action.details || {};
+        const actionType = action.type || action.actionType;
+
+        const handleSaveEdits = () => {
+          onEdit(localEdits);
+          setEditMode(false);
+        };
+
+        return (
+          <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-2xl p-4 my-3 shadow-lg">
+            {/* Header */}
+            <div className="flex items-center gap-2 mb-3 pb-2 border-b border-blue-200">
+              <span className="text-2xl">{actionType === 'teams' ? '💬' : actionType === 'email' ? '📧' : '📅'}</span>
+              <h4 className="font-bold text-gray-800">{action.title || 'Action Preview'}</h4>
+            </div>
+
+            {/* Details */}
+            <div className="space-y-2 mb-4">
+              {actionType === 'teams' && (
+                <>
+                  <div className="flex items-start gap-2">
+                    <span className="text-gray-500 font-medium min-w-[60px]">To:</span>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={localEdits.recipientName || details.recipient || ''}
+                        onChange={(e) => setLocalEdits({ ...localEdits, recipientName: e.target.value })}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      <span className="text-gray-800 font-semibold">{details.recipient || 'Unknown'}</span>
+                    )}
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-gray-500 font-medium min-w-[60px]">Message:</span>
+                    {editMode ? (
+                      <textarea
+                        value={localEdits.message || details.message || ''}
+                        onChange={(e) => setLocalEdits({ ...localEdits, message: e.target.value })}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm h-16"
+                      />
+                    ) : (
+                      <span className="text-gray-800 bg-white px-3 py-2 rounded-lg flex-1">"{details.message || 'No message'}"</span>
+                    )}
+                  </div>
+                </>
+              )}
+              {actionType === 'email' && (
+                <>
+                  <div className="flex items-start gap-2">
+                    <span className="text-gray-500 font-medium min-w-[60px]">To:</span>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={localEdits.recipientName || details.to || ''}
+                        onChange={(e) => setLocalEdits({ ...localEdits, recipientName: e.target.value })}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      <span className="text-gray-800 font-semibold">{details.to || 'Unknown'}</span>
+                    )}
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-gray-500 font-medium min-w-[60px]">Subject:</span>
+                    {editMode ? (
+                      <input
+                        type="text"
+                        value={localEdits.subject || details.subject || ''}
+                        onChange={(e) => setLocalEdits({ ...localEdits, subject: e.target.value })}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm"
+                      />
+                    ) : (
+                      <span className="text-gray-800">{details.subject || 'No subject'}</span>
+                    )}
+                  </div>
+                  <div className="flex items-start gap-2">
+                    <span className="text-gray-500 font-medium min-w-[60px]">Body:</span>
+                    {editMode ? (
+                      <textarea
+                        value={localEdits.body || details.body || ''}
+                        onChange={(e) => setLocalEdits({ ...localEdits, body: e.target.value })}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm h-20"
+                      />
+                    ) : (
+                      <span className="text-gray-800 bg-white px-3 py-2 rounded-lg flex-1 text-sm">{details.body || 'No content'}</span>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-2 justify-end pt-2 border-t border-blue-200">
+              {editMode ? (
+                <>
+                  <button
+                    onClick={() => setEditMode(false)}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition text-sm"
+                  >
+                    Cancel Edit
+                  </button>
+                  <button
+                    onClick={handleSaveEdits}
+                    className="px-4 py-2 bg-blue-500 text-white rounded-lg font-medium hover:bg-blue-600 transition text-sm"
+                  >
+                    ✓ Save Changes
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={onCancel}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300 transition disabled:opacity-50 text-sm"
+                  >
+                    ❌ Cancel
+                  </button>
+                  <button
+                    onClick={() => setEditMode(true)}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg font-medium hover:bg-blue-200 transition disabled:opacity-50 text-sm"
+                  >
+                    ✏️ Edit
+                  </button>
+                  <button
+                    onClick={() => onConfirm(localEdits)}
+                    disabled={isSubmitting}
+                    className="px-4 py-2 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-green-700 transition disabled:opacity-50 text-sm flex items-center gap-1"
+                  >
+                    {isSubmitting ? '⏳ Sending...' : '✅ Confirm & Send'}
+                  </button>
+                </>
+              )}
+            </div>
+
+            {/* Voice hint */}
+            <p className="text-xs text-gray-500 mt-2 text-center italic">
+              💡 Say "confirm" or "cancel" to proceed hands-free
+            </p>
+          </div>
+        );
+      };
+
+      // Helper function to format AI responses for clean display
+      // Strips markdown, handles structured objects, and cleans up output
+      const formatAIResponse = (response) => {
+        // If it's already an object, handle structured data
+        if (typeof response === 'object' && response !== null) {
+          // Handle success/error objects
+          if (response?.success !== undefined) {
+            return response.success
+              ? `✅ ${response.message || 'Action completed successfully'}`
+              : `❌ ${response.error || 'Action failed'}`;
+          }
+          // Don't display action_preview objects (modal should handle these)
+          if (response?.type === 'action_preview') {
+            return response.message || 'Please review and confirm the action above.';
+          }
+          // For other objects, try to format nicely
+          return JSON.stringify(response, null, 2);
+        }
+
+        // If it's a string, process it
+        if (typeof response === 'string') {
+          let text = response;
+
+          // Try to parse if it looks like JSON (starts with { or [)
+          if ((text.startsWith('{') || text.startsWith('[')) && (text.includes('"type"') || text.includes('"success"'))) {
+            try {
+              const parsed = JSON.parse(text);
+              // Recursively handle the parsed object
+              return formatAIResponse(parsed);
+            } catch (e) {
+              // Not valid JSON, continue with string processing
+            }
+          }
+
+          // Strip markdown formatting for clean display
+          // Remove **bold** and *italic* markers
+          text = text.replace(/\*\*([^*]+)\*\*/g, '$1');  // **bold** → bold
+          text = text.replace(/\*([^*]+)\*/g, '$1');      // *italic* → italic
+          text = text.replace(/__([^_]+)__/g, '$1');      // __underline__ → underline
+          text = text.replace(/_([^_]+)_/g, '$1');        // _italic_ → italic
+
+          // Clean up extra whitespace
+          text = text.replace(/\n{3,}/g, '\n\n');
+
+          return text;
+        }
+
+        return String(response);
+      };
+
       // Voice options mapping for Azure TTS
       const voiceOptions = {
-        'american': { 
-          label: 'English American Accent', 
+        'american': {
+          label: 'English American Accent',
           voice: 'en-US-JennyNeural',
           language: 'en-US'
         },
-        'british': { 
-          label: 'English British Accent', 
+        'british': {
+          label: 'English British Accent',
           voice: 'en-GB-SoniaNeural',
           language: 'en-GB'
         },
-        'japanese': { 
-          label: 'English Japanese Accent', 
+        'japanese': {
+          label: 'English Japanese Accent',
           voice: 'en-US-NancyNeural',
           language: 'en-US'
         }
@@ -74,7 +281,7 @@
             setShowProfileMenu(false);
           }
         };
-        
+
         if (showProfileMenu) {
           document.addEventListener('click', handleClickOutside);
           return () => document.removeEventListener('click', handleClickOutside);
@@ -100,16 +307,16 @@
           } catch (profileErr) {
             console.error('❌ Error fetching profile:', profileErr);
           }
-          
+
           // Fetch user profile photo
           try {
             const photoResponse = await fetch(`/api/user-photo?sessionId=${sessionId}`);
             console.log('📷 Photo response status:', photoResponse.status);
-            
+
             if (photoResponse.ok) {
               const photoBlob = await photoResponse.blob();
               console.log('📷 Photo blob size:', photoBlob.size);
-              
+
               if (photoBlob.size > 0) {
                 const photoUrl = URL.createObjectURL(photoBlob);
                 setUserPhoto(photoUrl);
@@ -190,17 +397,17 @@
           } catch (profileErr) {
             console.error('❌ Error fetching profile:', profileErr);
           }
-          
+
           // Fetch user profile photo
           if (sessionId) {
             try {
               const photoResponse = await fetch(`/api/user-photo?sessionId=${sessionId}`);
               console.log('📷 Photo response status:', photoResponse.status);
-              
+
               if (photoResponse.ok) {
                 const photoBlob = await photoResponse.blob();
                 console.log('📷 Photo blob size:', photoBlob.size);
-                
+
                 if (photoBlob.size > 0) {
                   const photoUrl = URL.createObjectURL(photoBlob);
                   setUserPhoto(photoUrl);
@@ -321,16 +528,44 @@
           }
 
           setCurrentTranscript(data.transcript);
-          setCurrentResponse(data.agentResponse);
 
-          const newMessage = {
-            id: Date.now(),
-            user: data.transcript,
-            ai: data.agentResponse,
-            timestamp: new Date().toLocaleTimeString()
-          };
+          // Check if response is an action_preview (parse if needed)
+          let parsedResponse = data.agentResponse;
+          if (typeof data.agentResponse === 'string' && data.agentResponse.startsWith('{')) {
+            try {
+              parsedResponse = JSON.parse(data.agentResponse);
+            } catch (e) {
+              // Not JSON, keep as string
+            }
+          }
 
-          setMessages(prev => [...prev, newMessage]);
+          // Check if this is an action preview - show inline card in chat
+          if (parsedResponse && typeof parsedResponse === 'object' && parsedResponse.type === 'action_preview') {
+            console.log('🔔 Voice: Action preview detected - showing inline preview card');
+            setPendingAction(parsedResponse.preview);
+            setActionEdits({});
+
+            // Add simplified message to chat (not the full JSON)
+            const newMessage = {
+              id: Date.now(),
+              user: data.transcript,
+              ai: parsedResponse.message || 'Please review and confirm the action.',
+              timestamp: new Date().toLocaleTimeString()
+            };
+            setMessages(prev => [...prev, newMessage]);
+            setCurrentResponse(parsedResponse.message || 'Please confirm the action.');
+          } else {
+            // Normal response - add to chat
+            setCurrentResponse(data.agentResponse);
+
+            const newMessage = {
+              id: Date.now(),
+              user: data.transcript,
+              ai: data.agentResponse,
+              timestamp: new Date().toLocaleTimeString()
+            };
+            setMessages(prev => [...prev, newMessage]);
+          }
 
           if (data.audioData) {
             const audioBlob = new Blob(
@@ -374,6 +609,15 @@
         window.location.href = '/auth/login';
       };
 
+      const stopSpeaking = () => {
+        if (audioRef.current) {
+          audioRef.current.pause();
+          audioRef.current.currentTime = 0;
+          setIsSpeaking(false);
+          console.log('🔇 Audio stopped by user');
+        }
+      };
+
       const handleTextSubmit = async (e) => {
         e.preventDefault();
 
@@ -412,18 +656,47 @@
 
           const data = await response.json();
 
-          setMessages(prev => [...prev, {
-            id: messageId,
-            user: userMessage,
-            ai: data.response || 'No response',
-            timestamp: new Date().toLocaleTimeString('en-US', {
-              hour: '2-digit',
-              minute: '2-digit',
-              second: '2-digit'
-            })
-          }]);
+          // Try to parse response if it's a JSON string (action_preview)
+          let parsedResponse = data.response;
+          if (typeof data.response === 'string') {
+            try {
+              parsedResponse = JSON.parse(data.response);
+            } catch (e) {
+              // Not JSON, keep as string
+              parsedResponse = data.response;
+            }
+          }
 
-          setCurrentResponse(data.response || '');
+          // Check if this is an action preview - show inline card in chat
+          if (parsedResponse && typeof parsedResponse === 'object' && parsedResponse.type === 'action_preview') {
+            console.log('🔔 Action preview detected - showing inline preview card');
+            setPendingAction(parsedResponse.preview);
+            setActionEdits({});
+
+            setMessages(prev => [...prev, {
+              id: messageId,
+              user: userMessage,
+              ai: parsedResponse.message || 'Action requires confirmation',
+              timestamp: new Date().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              })
+            }]);
+          } else {
+            setMessages(prev => [...prev, {
+              id: messageId,
+              user: userMessage,
+              ai: parsedResponse || 'No response',
+              timestamp: new Date().toLocaleTimeString('en-US', {
+                hour: '2-digit',
+                minute: '2-digit',
+                second: '2-digit'
+              })
+            }]);
+
+            setCurrentResponse(parsedResponse || '');
+          }
         } catch (err) {
           setError(`❌ Error sending message: ${err.message}`);
 
@@ -442,6 +715,86 @@
         }
       };
 
+      // Handle action confirmation
+      const handleActionConfirm = async () => {
+        if (!pendingAction) return;
+
+        setIsSubmittingAction(true);
+        try {
+          const response = await fetch('/api/confirm-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: sessionId,
+              actionId: pendingAction.actionId,
+              userChoice: 'confirm',
+              edits: Object.keys(actionEdits).length > 0 ? actionEdits : null
+            })
+          });
+
+          if (!response.ok) {
+            throw new Error(`Failed to confirm action: ${response.statusText}`);
+          }
+
+          const result = await response.json();
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            user: '✅ Action confirmed and executed',
+            ai: JSON.stringify(result.result, null, 2),
+            timestamp: new Date().toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            })
+          }]);
+
+          setPendingAction(null);
+          setShowConfirmationModal(false);
+          setActionEdits({});
+        } catch (err) {
+          setError(`❌ Error confirming action: ${err.message}`);
+        } finally {
+          setIsSubmittingAction(false);
+        }
+      };
+
+      // Handle action cancellation
+      const handleActionCancel = async () => {
+        if (!pendingAction) return;
+
+        setIsSubmittingAction(true);
+        try {
+          await fetch('/api/confirm-action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sessionId: sessionId,
+              actionId: pendingAction.actionId,
+              userChoice: 'cancel'
+            })
+          });
+
+          setMessages(prev => [...prev, {
+            id: Date.now(),
+            user: '❌ Action cancelled',
+            ai: 'Your action was cancelled and not executed.',
+            timestamp: new Date().toLocaleTimeString('en-US', {
+              hour: '2-digit',
+              minute: '2-digit',
+              second: '2-digit'
+            })
+          }]);
+
+          setPendingAction(null);
+          setShowConfirmationModal(false);
+          setActionEdits({});
+        } catch (err) {
+          setError(`❌ Error cancelling action: ${err.message}`);
+        } finally {
+          setIsSubmittingAction(false);
+        }
+      };
+
       return (
         <div className="min-h-screen bg-white">
           {/* Header Navigation */}
@@ -450,11 +803,11 @@
               <div className="flex items-center justify-between">
                 {/* Logo */}
                 <div className="flex items-center gap-3">
-               <img
-  src="/img/Hosho DIgital-Logo.jpg"
-  alt="Hosho Digital Logo"
-  className="h-12 w-auto object-contain"
-/>
+                  <img
+                    src="/img/Hosho DIgital-Logo.jpg"
+                    alt="Hosho Digital Logo"
+                    className="h-12 w-auto object-contain"
+                  />
 
                 </div>
 
@@ -480,19 +833,19 @@
                     <div className="flex items-center gap-3">
                       <div className="text-right hidden sm:block">
                         <p className="text-sm font-semibold text-gray-1200">Hi {userFirstName}!</p>
-                         <p className="text-xs text-gray-500">{userEmail}</p>
+                        <p className="text-xs text-gray-500">{userEmail}</p>
                       </div>
                       <button
                         onClick={() => setShowProfileMenu(!showProfileMenu)}
                         className="w-10 h-10 rounded-full overflow-hidden border-2 border-red-500 shadow-md hover:shadow-lg transition cursor-pointer focus:outline-none"
                       >
-                        <img 
-                          src={userPhoto} 
-                          alt="User Profile" 
+                        <img
+                          src={userPhoto}
+                          alt="User Profile"
                           className="w-full h-full object-cover"
                         />
                       </button>
-                      
+
                       {showProfileMenu && (
                         <div className="absolute right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 z-50 min-w-max">
                           <div className="px-4 py-3 border-b border-gray-100">
@@ -713,10 +1066,10 @@
                       onClick={isRecording ? stopRecording : startRecording}
                       disabled={isProcessing || !isConfigured || !isLoggedIn}
                       className={`relative w-36 h-36 rounded-full flex items-center justify-center transition-all transform shadow-xl ${isRecording
-                          ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 animate-pulse scale-110'
-                          : isProcessing || isSpeaking
-                            ? 'bg-gray-400 cursor-not-allowed'
-                            : 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 hover:scale-105'
+                        ? 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 animate-pulse scale-110'
+                        : isProcessing || isSpeaking
+                          ? 'bg-gray-400 cursor-not-allowed'
+                          : 'bg-gradient-to-br from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 hover:scale-105'
                         } ${!isConfigured || !isLoggedIn ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                       {isProcessing ? (
@@ -754,6 +1107,14 @@
 
                   {/* Action Buttons */}
                   <div className="space-y-3">
+                    {isSpeaking && (
+                      <button
+                        onClick={stopSpeaking}
+                        className="w-full px-4 py-3 rounded-lg font-medium bg-orange-500 text-white hover:bg-orange-600 transition flex items-center justify-center gap-2"
+                      >
+                        🔇 Stop Speaking
+                      </button>
+                    )}
                     {messages.length > 0 && (
                       <button
                         onClick={clearHistory}
@@ -782,11 +1143,10 @@
                           setSelectedAccent(key);
                           setSelectedLanguage(option.language);
                         }}
-                        className={`w-full px-4 py-3 rounded-xl font-medium transition-all transform ${
-                          selectedAccent === key
-                            ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg scale-105'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
+                        className={`w-full px-4 py-3 rounded-xl font-medium transition-all transform ${selectedAccent === key
+                          ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg scale-105'
+                          : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <span>{option.label.split(' ')[1]}</span>
@@ -848,7 +1208,7 @@
                               <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm p-4">
                                 <div className="flex items-start gap-2">
                                   <span className="text-xl">🤖</span>
-                                  <p className="text-sm leading-relaxed flex-1">{msg.ai}</p>
+                                  <p className="text-sm leading-relaxed flex-1 whitespace-pre-wrap">{formatAIResponse(msg.ai)}</p>
                                 </div>
                               </div>
                               <p className="text-xs text-gray-400 mt-1">AI Assistant</p>
@@ -856,6 +1216,27 @@
                           </div>
                         </div>
                       ))}
+
+                      {/* Inline Action Preview Card - shows in chat for hands-free operation */}
+                      {pendingAction && (
+                        <div className="flex justify-start">
+                          <div className="max-w-[90%] w-full">
+                            <ActionPreviewCard
+                              action={pendingAction}
+                              isSubmitting={isSubmittingAction}
+                              onConfirm={(edits) => {
+                                setActionEdits(edits);
+                                handleActionConfirm();
+                              }}
+                              onCancel={handleActionCancel}
+                              onEdit={(edits) => {
+                                setActionEdits(prev => ({ ...prev, ...edits }));
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       <div ref={messagesEndRef} />
                     </div>
                   )}
@@ -899,10 +1280,139 @@
                 💡 <strong>Tip:</strong> Click the microphone to speak, then click stop when done
               </p>
               <p className="text-sm text-gray-500 mt-2">
-               Intelligence Powered by <b>HOSHO Digital</b>
+                Intelligence Powered by <b>HOSHO Digital</b>
               </p>
             </div>
           </div>
+
+          {/* Action Confirmation Modal */}
+          {showConfirmationModal && pendingAction && (
+            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+                <div className="sticky top-0 bg-gradient-to-r from-red-500 to-red-600 text-white p-6 flex items-center justify-between border-b">
+                  <div className="flex items-center gap-3">
+                    <span className="text-2xl">🔔</span>
+                    <h2 className="text-2xl font-bold">Action Confirmation</h2>
+                  </div>
+                  <button
+                    onClick={handleActionCancel}
+                    disabled={isSubmittingAction}
+                    className="text-white hover:bg-white hover:bg-opacity-20 rounded p-2 transition"
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* Action Type */}
+                  <div>
+                    <p className="text-sm text-gray-500 font-semibold uppercase mb-2">Action Type</p>
+                    <p className="text-lg font-bold text-gray-900">{pendingAction.title}</p>
+                  </div>
+
+                  {/* Action Details */}
+                  <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
+                    <p className="text-sm text-gray-500 font-semibold uppercase mb-3">Details</p>
+                    <div className="space-y-3">
+                      {pendingAction.actionType === 'send_email' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold">To:</label>
+                            <input
+                              type="text"
+                              value={actionEdits.recipientName || pendingAction.details?.to || ''}
+                              onChange={(e) => setActionEdits({ ...actionEdits, recipientName: e.target.value })}
+                              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                              disabled={!pendingAction.editable?.includes('recipient')}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold">Subject:</label>
+                            <input
+                              type="text"
+                              value={actionEdits.subject || pendingAction.details?.subject || ''}
+                              onChange={(e) => setActionEdits({ ...actionEdits, subject: e.target.value })}
+                              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                              disabled={!pendingAction.editable?.includes('subject')}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold">Message:</label>
+                            <textarea
+                              value={actionEdits.body || pendingAction.details?.body || ''}
+                              onChange={(e) => setActionEdits({ ...actionEdits, body: e.target.value })}
+                              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded text-sm h-24"
+                              disabled={!pendingAction.editable?.includes('body')}
+                            />
+                          </div>
+                        </>
+                      )}
+                      {pendingAction.actionType === 'send_teams_message' && (
+                        <>
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold">To:</label>
+                            <input
+                              type="text"
+                              value={actionEdits.recipientName || pendingAction.details?.recipient || ''}
+                              onChange={(e) => setActionEdits({ ...actionEdits, recipientName: e.target.value })}
+                              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded text-sm"
+                              disabled={!pendingAction.editable?.includes('recipient')}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-xs text-gray-600 font-semibold">Message:</label>
+                            <textarea
+                              value={actionEdits.message || pendingAction.details?.message || ''}
+                              onChange={(e) => setActionEdits({ ...actionEdits, message: e.target.value })}
+                              className="w-full mt-1 px-3 py-2 border border-gray-300 rounded text-sm h-24"
+                              disabled={!pendingAction.editable?.includes('message')}
+                            />
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Info Message */}
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <p className="text-sm text-blue-700">
+                      <strong>ℹ️ Please review</strong> the action details above. You can edit the highlighted fields or proceed with sending.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="sticky bottom-0 bg-gray-50 border-t border-gray-200 p-6 flex gap-3 justify-end">
+                  <button
+                    onClick={handleActionCancel}
+                    disabled={isSubmittingAction}
+                    className="px-6 py-3 bg-gray-200 text-gray-800 rounded-lg font-semibold hover:bg-gray-300 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ❌ Cancel
+                  </button>
+                  <button
+                    onClick={handleActionConfirm}
+                    disabled={isSubmittingAction}
+                    className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold hover:from-red-600 hover:to-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {isSubmittingAction ? (
+                      <>
+                        <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Sending...
+                      </>
+                    ) : (
+                      <>
+                        ✅ Confirm & Send
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Floating Chat Button */}
           <button className="fixed bottom-8 right-8 w-14 h-14 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-full shadow-2xl hover:from-red-600 hover:to-red-700 transition flex items-center justify-center">

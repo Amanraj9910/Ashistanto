@@ -1,6 +1,8 @@
 require('isomorphic-fetch');
 const { Client } = require('@microsoft/microsoft-graph-client');
 const { ConfidentialClientApplication } = require('@azure/msal-node');
+const formatters = require('./formatters');
+const timezoneHelper = require('./timezone-helper');
 
 // Get user email from environment variable
 const userEmail = process.env.MICROSOFT_USER_EMAIL;
@@ -304,24 +306,47 @@ async function searchContactEmail(name, userToken = null) {
 
 // ============== EMAIL FUNCTIONS ==============
 
-async function getRecentEmails(count = 5, userToken = null) {
+async function getRecentEmails(count = 5, userToken = null, sessionId = null) {
   try {
     const client = await getGraphClient(userToken);
 
     const messages = await client
       .api('/me/messages')
-      .select('subject,from,receivedDateTime,bodyPreview,isRead')
+      .select('id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments,attachmentCount')
       .top(count)
       .orderby('receivedDateTime DESC')
       .get();
 
-    return messages.value.map(msg => ({
-      subject: msg.subject,
+    // Get user timezone for formatting
+    let userTimeZone = 'UTC';
+    if (sessionId) {
+      try {
+        const tz = await timezoneHelper.getUserTimeZone(sessionId, userToken);
+        if (tz) {
+          userTimeZone = tz;
+          console.log(`✓ Using user timezone: ${userTimeZone}`);
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not retrieve user timezone, using UTC:', err.message);
+        userTimeZone = 'UTC';
+      }
+    } else {
+      console.warn('⚠️ No sessionId provided, using UTC timezone');
+    }
+
+    const formattedEmails = messages.value.map(msg => ({
+      id: msg.id,
       from: msg.from.emailAddress.name || msg.from.emailAddress.address,
-      date: new Date(msg.receivedDateTime).toLocaleString(),
+      subject: msg.subject,
+      receivedDate: msg.receivedDateTime,
       preview: msg.bodyPreview.substring(0, 100),
-      isRead: msg.isRead
+      hasAttachments: msg.hasAttachments,
+      attachmentCount: msg.attachmentCount || 0
     }));
+
+    // Always use formatter with timezone (never fallback)
+    console.log(`📧 Formatting ${formattedEmails.length} emails with timezone: ${userTimeZone}`);
+    return formatters.formatEmails(formattedEmails, userTimeZone);
   } catch (error) {
     console.error('Error getting emails:', error);
     throw new Error('Failed to retrieve emails');
@@ -461,7 +486,7 @@ ${senderProfile.displayName || 'User'}`;
 
 // ============== CALENDAR FUNCTIONS ==============
 
-async function getCalendarEvents(days = 7, userToken = null) {
+async function getCalendarEvents(days = 7, userToken = null, sessionId = null) {
   try {
     const client = await getGraphClient(userToken);
     const startDate = new Date();
@@ -471,25 +496,47 @@ async function getCalendarEvents(days = 7, userToken = null) {
     const events = await client
       .api('/me/calendar/events')
       .filter(`start/dateTime ge '${startDate.toISOString()}' and start/dateTime le '${endDate.toISOString()}'`)
-      .select('id,subject,start,end,location,attendees,organizer,isOnlineMeeting,onlineMeeting')
+      .select('id,subject,start,end,location,attendees,organizer,isOnlineMeeting,onlineMeeting,bodyPreview')
       .orderby('start/dateTime')
       .top(50)
       .get();
 
-    return events.value.map(event => ({
+    const eventsList = events.value.map(event => ({
       id: event.id,
       subject: event.subject,
-      start: new Date(event.start.dateTime).toLocaleString(),
-      end: new Date(event.end.dateTime).toLocaleString(),
       startDateTime: event.start.dateTime,
       endDateTime: event.end.dateTime,
+      start: new Date(event.start.dateTime),
+      end: new Date(event.end.dateTime),
       location: event.location?.displayName || 'No location',
       organizer: event.organizer?.emailAddress?.name || 'Unknown',
       attendees: event.attendees?.map(a => a.emailAddress.name || a.emailAddress.address) || [],
       attendeeCount: event.attendees?.length || 0,
       isTeamsMeeting: event.isOnlineMeeting || false,
-      joinUrl: event.onlineMeeting?.joinUrl || null
+      joinUrl: event.onlineMeeting?.joinUrl || null,
+      bodyPreview: event.bodyPreview || ''
     }));
+
+    // Get user timezone for formatting
+    let userTimeZone = 'UTC';
+    if (sessionId) {
+      try {
+        const tz = await timezoneHelper.getUserTimeZone(sessionId, userToken);
+        if (tz) {
+          userTimeZone = tz;
+          console.log(`✓ Using user timezone: ${userTimeZone}`);
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not retrieve user timezone, using UTC:', err.message);
+        userTimeZone = 'UTC';
+      }
+    } else {
+      console.warn('⚠️ No sessionId provided, using UTC timezone');
+    }
+
+    // Always use formatter with timezone (never fallback to unformatted)
+    console.log(`📋 Formatting ${eventsList.length} calendar events with timezone: ${userTimeZone}`);
+    return formatters.formatCalendarEvents(eventsList, userTimeZone);
   } catch (error) {
     console.error('Error getting calendar events:', error);
     throw new Error('Failed to retrieve calendar events');
@@ -528,49 +575,49 @@ async function createCalendarEvent(
     // 🧑‍🤝‍🧑 Resolve attendees (get Outlook email addresses)
     //------------------------------------------------------
     //------------------------------------------------------
-// 🧑‍🤝‍🧑 Resolve attendees (get Outlook email addresses)
-//------------------------------------------------------
-const attendeeEmails = [];
-const notFoundAttendees = [];
+    // 🧑‍🤝‍🧑 Resolve attendees (get Outlook email addresses)
+    //------------------------------------------------------
+    const attendeeEmails = [];
+    const notFoundAttendees = [];
 
-if (attendeeNames && attendeeNames.length > 0) {
-  console.log(`   Processing ${attendeeNames.length} attendee(s)...`);
-  for (const name of attendeeNames) {
-    try {
-      const searchResult = await searchContactEmail(name, userToken);
-      if (searchResult.found && searchResult.results.length > 0) {
-        attendeeEmails.push({
-          emailAddress: {
-            address: searchResult.results[0].email,
-            name: searchResult.results[0].name
-          },
-          type: 'required'
-        });
-        console.log(`     ✅ Attendee: ${searchResult.results[0].email}`);
-      } else {
-        notFoundAttendees.push(name);
-        console.log(`     ⚠ Attendee not found: ${name}`);
+    if (attendeeNames && attendeeNames.length > 0) {
+      console.log(`   Processing ${attendeeNames.length} attendee(s)...`);
+      for (const name of attendeeNames) {
+        try {
+          const searchResult = await searchContactEmail(name, userToken);
+          if (searchResult.found && searchResult.results.length > 0) {
+            attendeeEmails.push({
+              emailAddress: {
+                address: searchResult.results[0].email,
+                name: searchResult.results[0].name
+              },
+              type: 'required'
+            });
+            console.log(`     ✅ Attendee: ${searchResult.results[0].email}`);
+          } else {
+            notFoundAttendees.push(name);
+            console.log(`     ⚠ Attendee not found: ${name}`);
+          }
+        } catch (err) {
+          notFoundAttendees.push(name);
+          console.log(`     ⚠ Could not find attendee: ${name}`);
+        }
       }
-    } catch (err) {
-      notFoundAttendees.push(name);
-      console.log(`     ⚠ Could not find attendee: ${name}`);
     }
-  }
-}
 
-//------------------------------------------------------
-// ❗ Validate attendees before creating meeting
-//------------------------------------------------------
-if (attendeeNames.length > 0 && notFoundAttendees.length > 0) {
-  console.log("❌ Cannot create meeting. Attendee(s) not found:", notFoundAttendees);
+    //------------------------------------------------------
+    // ❗ Validate attendees before creating meeting
+    //------------------------------------------------------
+    if (attendeeNames.length > 0 && notFoundAttendees.length > 0) {
+      console.log("❌ Cannot create meeting. Attendee(s) not found:", notFoundAttendees);
 
-  return {
-    success: false,
-    notFound: true,
-    message: `Cannot create meeting. I couldn't find: ${notFoundAttendees.join(', ')}. Please verify their name(s).`,
-    missingAttendees: notFoundAttendees
-  };
-}
+      return {
+        success: false,
+        notFound: true,
+        message: `Cannot create meeting. I couldn't find: ${notFoundAttendees.join(', ')}. Please verify their name(s).`,
+        missingAttendees: notFoundAttendees
+      };
+    }
 
 
     //------------------------------------------------------
@@ -715,7 +762,7 @@ async function updateCalendarEvent(
 
     if (newAttendeeNames && newAttendeeNames.length > 0) {
       console.log(`   → Adding ${newAttendeeNames.length} new attendee(s)...`);
-      
+
       const existingAttendees = existingEvent.attendees || [];
       const newAttendees = [];
 
@@ -724,8 +771,8 @@ async function updateCalendarEvent(
           const searchResult = await searchContactEmail(name, userToken);
           if (searchResult.found && searchResult.results.length > 0) {
             const email = searchResult.results[0].email;
-            
-            const alreadyExists = existingAttendees.some(a => 
+
+            const alreadyExists = existingAttendees.some(a =>
               a.emailAddress.address.toLowerCase() === email.toLowerCase()
             );
 
@@ -779,9 +826,9 @@ async function updateCalendarEvent(
 async function deleteCalendarEvents(subject = null, attendeeName = null, date = null, userToken = null) {
   try {
     console.log(`🗑️ Searching for calendar event(s) to delete...`);
-    
+
     if (!userToken) throw new Error('Missing user token.');
-    
+
     const client = await getGraphClient(userToken);
 
     let startDate, endDate;
@@ -811,7 +858,7 @@ async function deleteCalendarEvents(subject = null, attendeeName = null, date = 
     }
 
     let filterQuery = `start/dateTime ge '${startDate.toISOString()}' and start/dateTime le '${endDate.toISOString()}'`;
-    
+
     const events = await client
       .api('/me/calendar/events')
       .filter(filterQuery)
@@ -833,7 +880,7 @@ async function deleteCalendarEvents(subject = null, attendeeName = null, date = 
     let matchingEvents = events.value;
     if (subject) {
       const subjectLower = subject.toLowerCase();
-      matchingEvents = matchingEvents.filter(e => 
+      matchingEvents = matchingEvents.filter(e =>
         e.subject && e.subject.toLowerCase().includes(subjectLower)
       );
       console.log(`   🔍 After subject filter ("${subject}"): ${matchingEvents.length} matches`);
@@ -841,8 +888,8 @@ async function deleteCalendarEvents(subject = null, attendeeName = null, date = 
 
     if (attendeeName) {
       const attendeeLower = attendeeName.toLowerCase();
-      matchingEvents = matchingEvents.filter(e => 
-        e.attendees && e.attendees.some(a => 
+      matchingEvents = matchingEvents.filter(e =>
+        e.attendees && e.attendees.some(a =>
           a.emailAddress.name?.toLowerCase().includes(attendeeLower) ||
           a.emailAddress.address?.toLowerCase().includes(attendeeLower)
         )
@@ -855,7 +902,7 @@ async function deleteCalendarEvents(subject = null, attendeeName = null, date = 
       if (subject) criteria.push(`subject containing "${subject}"`);
       if (attendeeName) criteria.push(`attendee "${attendeeName}"`);
       if (date) criteria.push(`on ${date}`);
-      
+
       return {
         success: false,
         notFound: true,
@@ -865,7 +912,7 @@ async function deleteCalendarEvents(subject = null, attendeeName = null, date = 
 
     console.log(`   🗑️ Deleting ${matchingEvents.length} event(s)...`);
     const deletedEvents = [];
-    
+
     for (const event of matchingEvents) {
       try {
         await client.api(`/me/events/${event.id}`).delete();
@@ -1042,13 +1089,13 @@ async function sendTeamsMessage(recipientName, message, userToken = null) {
 async function getTeamsMessages(chatId = null, count = 10, userToken = null) {
   try {
     console.log(`📋 Getting recent Teams messages...`);
-    
+
     if (!userToken) {
       throw new Error('User token required for Teams operations');
     }
-    
+
     const client = await getGraphClient(userToken);
-    
+
     if (!chatId) {
       console.log('   → No chatId provided, finding most recent chat...');
       const chats = await client
@@ -1056,28 +1103,28 @@ async function getTeamsMessages(chatId = null, count = 10, userToken = null) {
         .top(5)
         .orderby('lastMessagePreview/createdDateTime DESC')
         .get();
-      
+
       if (!chats.value || chats.value.length === 0) {
-        return { 
-          success: true, 
-          messages: [], 
-          message: 'No chats found' 
+        return {
+          success: true,
+          messages: [],
+          message: 'No chats found'
         };
       }
-      
+
       chatId = chats.value[0].id;
       console.log(`   ✅ Using most recent chat: ${chatId}`);
     }
-    
+
     console.log(`   → Fetching ${count} messages from chat...`);
     const messages = await client
       .api(`/chats/${chatId}/messages`)
       .top(count)
       .orderby('createdDateTime DESC')
       .get();
-    
+
     console.log(`   ✅ Retrieved ${messages.value.length} messages`);
-    
+
     return {
       success: true,
       chatId: chatId,
@@ -1092,7 +1139,7 @@ async function getTeamsMessages(chatId = null, count = 10, userToken = null) {
         isDeleted: !!msg.deletedDateTime
       }))
     };
-    
+
   } catch (error) {
     console.error('❌ Error getting Teams messages:', error);
     throw new Error('Failed to retrieve Teams messages: ' + error.message);
@@ -1102,26 +1149,26 @@ async function getTeamsMessages(chatId = null, count = 10, userToken = null) {
 async function deleteTeamsMessage(chatId = null, messageId = null, messageContent = null, userToken = null) {
   try {
     console.log(`🗑️ Attempting to delete Teams message...`);
-    
+
     if (!userToken) {
       throw new Error('User token required for Teams operations');
     }
-    
+
     const client = await getGraphClient(userToken);
-    
+
     const me = await client.api('/me').select('id,displayName').get();
     const currentUserId = me.id;
     console.log(`   → Current user: ${me.displayName} (${currentUserId})`);
-    
+
     if (!chatId || !messageId) {
       console.log('   → Searching for message to delete...');
-      
+
       const chats = await client
         .api('/me/chats')
         .top(10)
         .orderby('lastMessagePreview/createdDateTime DESC')
         .get();
-      
+
       if (!chats.value || chats.value.length === 0) {
         return {
           success: false,
@@ -1129,7 +1176,7 @@ async function deleteTeamsMessage(chatId = null, messageId = null, messageConten
           message: 'No chats found'
         };
       }
-      
+
       for (const chat of chats.value) {
         try {
           const messages = await client
@@ -1137,21 +1184,21 @@ async function deleteTeamsMessage(chatId = null, messageId = null, messageConten
             .top(20)
             .orderby('createdDateTime DESC')
             .get();
-          
+
           let targetMessage;
           if (messageContent) {
-            targetMessage = messages.value.find(msg => 
+            targetMessage = messages.value.find(msg =>
               msg.from?.user?.id === currentUserId &&
               !msg.deletedDateTime &&
               msg.body?.content?.toLowerCase().includes(messageContent.toLowerCase())
             );
           } else {
-            targetMessage = messages.value.find(msg => 
+            targetMessage = messages.value.find(msg =>
               msg.from?.user?.id === currentUserId &&
               !msg.deletedDateTime
             );
           }
-          
+
           if (targetMessage) {
             chatId = chat.id;
             messageId = targetMessage.id;
@@ -1163,37 +1210,37 @@ async function deleteTeamsMessage(chatId = null, messageId = null, messageConten
           continue;
         }
       }
-      
+
       if (!chatId || !messageId) {
         return {
           success: false,
           notFound: true,
-          message: messageContent 
-            ? `No message found containing "${messageContent}"` 
+          message: messageContent
+            ? `No message found containing "${messageContent}"`
             : 'No recent message found to delete'
         };
       }
     }
-    
+
     console.log(`   → Attempting to delete message...`);
-    
+
     try {
       await client
         .api(`/chats/${chatId}/messages/${messageId}/softDelete`)
         .post({});
-      
+
       console.log('   ✅ Teams message deleted successfully');
-      
+
       return {
         success: true,
         message: 'Teams message deleted successfully',
         deletedMessageId: messageId,
         chatId: chatId
       };
-      
+
     } catch (deleteError) {
       console.error('   ❌ Soft delete failed:', deleteError);
-      
+
       if (deleteError.statusCode === 404) {
         return {
           success: false,
@@ -1201,14 +1248,14 @@ async function deleteTeamsMessage(chatId = null, messageId = null, messageConten
           message: 'Message not found or already deleted'
         };
       }
-      
+
       if (deleteError.statusCode === 403 || deleteError.code === 'Forbidden') {
         return {
           success: false,
           message: 'Cannot delete this message. You can only delete messages you sent recently.'
         };
       }
-      
+
       try {
         console.log('   → Trying alternative: editing message content...');
         await client
@@ -1219,7 +1266,7 @@ async function deleteTeamsMessage(chatId = null, messageId = null, messageConten
               content: '[Message deleted]'
             }
           });
-        
+
         console.log('   ✅ Message content cleared');
         return {
           success: true,
@@ -1232,7 +1279,7 @@ async function deleteTeamsMessage(chatId = null, messageId = null, messageConten
         throw deleteError;
       }
     }
-    
+
   } catch (error) {
     console.error('❌ Error deleting Teams message:', error);
     throw new Error('Failed to delete Teams message: ' + error.message);
@@ -1261,21 +1308,45 @@ async function getUserProfile(userToken = null) {
 
 // ============== SHAREPOINT FUNCTIONS ==============
 
-async function getRecentFiles(count = 10, userToken = null) {
+async function getRecentFiles(count = 10, userToken = null, sessionId = null) {
   try {
     const client = await getGraphClient(userToken);
     const files = await client
       .api('/me/drive/recent')
+      .select('id,name,webUrl,lastModifiedDateTime,size,file,lastModifiedBy')
       .top(count)
       .get();
 
-    return files.value.map(file => ({
+    const filesList = files.value.map(file => ({
+      id: file.id,
       name: file.name,
-      webUrl: file.webUrl,
-      lastModified: new Date(file.lastModifiedDateTime).toLocaleString(),
-      size: formatFileSize(file.size),
-      type: file.file?.mimeType || 'folder'
+      type: file.file?.mimeType || 'folder',
+      modifiedDate: file.lastModifiedDateTime,
+      size: file.size,
+      modifiedBy: file.lastModifiedBy?.user?.displayName || 'Unknown',
+      webUrl: file.webUrl
     }));
+
+    // Get user timezone for formatting
+    let userTimeZone = 'UTC';
+    if (sessionId) {
+      try {
+        const tz = await timezoneHelper.getUserTimeZone(sessionId, userToken);
+        if (tz) {
+          userTimeZone = tz;
+          console.log(`✓ Using user timezone: ${userTimeZone}`);
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not retrieve user timezone, using UTC:', err.message);
+        userTimeZone = 'UTC';
+      }
+    } else {
+      console.warn('⚠️ No sessionId provided, using UTC timezone');
+    }
+
+    // Always use formatter with timezone (never fallback)
+    console.log(`📁 Formatting ${filesList.length} files with timezone: ${userTimeZone}`);
+    return formatters.formatFiles(filesList, userTimeZone);
   } catch (error) {
     console.error('Error getting recent files:', error);
     throw new Error('Failed to retrieve recent files');
@@ -1284,21 +1355,62 @@ async function getRecentFiles(count = 10, userToken = null) {
 
 async function searchFiles(query, userToken = null) {
   try {
+    console.log(`🔍 Searching files for: "${query}"`);
     const client = await getGraphClient(userToken);
+
+    // Request additional fields including parentReference for folder path
     const files = await client
       .api(`/me/drive/root/search(q='${query}')`)
+      .select('id,name,webUrl,lastModifiedDateTime,size,file,parentReference,createdDateTime')
       .top(10)
       .get();
 
-    return files.value.map(file => ({
-      name: file.name,
-      webUrl: file.webUrl,
-      lastModified: new Date(file.lastModifiedDateTime).toLocaleString(),
-      size: formatFileSize(file.size)
-    }));
+    console.log(`   ✅ Found ${files.value.length} files`);
+
+    const formattedFiles = files.value.map(file => {
+      // Extract folder path from parentReference
+      let folderPath = '';
+      let breadcrumb = '';
+
+      if (file.parentReference && file.parentReference.path) {
+        // Path format: /drive/root:/Folder1/Folder2
+        const pathParts = file.parentReference.path.split(':');
+        if (pathParts.length > 1 && pathParts[1]) {
+          folderPath = pathParts[1];
+          // Create breadcrumb: Folder1 → Folder2 → FileName
+          const folders = folderPath.split('/').filter(f => f);
+          folders.push(file.name);
+          breadcrumb = folders.join(' → ');
+        }
+      }
+
+      if (!breadcrumb) {
+        breadcrumb = `Root → ${file.name}`;
+      }
+
+      return {
+        name: file.name,
+        webUrl: file.webUrl,
+        lastModified: new Date(file.lastModifiedDateTime).toLocaleString(),
+        size: formatFileSize(file.size),
+        folderPath: folderPath || '/Root',
+        breadcrumb: breadcrumb,
+        type: file.file?.mimeType || 'folder',
+        location: `You can find this file at: ${breadcrumb}`
+      };
+    });
+
+    // Return formatted response with clear structure
+    return {
+      success: true,
+      count: formattedFiles.length,
+      query: query,
+      files: formattedFiles,
+      summary: `Found ${formattedFiles.length} file(s) matching "${query}"`
+    };
   } catch (error) {
     console.error('Error searching files:', error);
-    throw new Error('Failed to search files');
+    throw new Error('Failed to search files: ' + error.message);
   }
 }
 
@@ -1312,27 +1424,50 @@ function formatFileSize(bytes) {
 
 // ============== DELETION FUNCTIONS ==============
 
-async function getRecentSentEmails(count = 10, userToken = null) {
+async function getRecentSentEmails(count = 10, userToken = null, sessionId = null) {
   try {
     console.log(`📬 Getting ${count} recent sent emails...`);
     const client = await getGraphClient(userToken);
 
     const messages = await client
       .api('/me/mailFolders/sentItems/messages')
-      .select('id,subject,toRecipients,sentDateTime,bodyPreview')
+      .select('id,subject,toRecipients,sentDateTime,bodyPreview,hasAttachments,attachmentCount')
       .top(count)
       .orderby('sentDateTime DESC')
       .get();
 
+    const emailsList = messages.value.map(msg => ({
+      id: msg.id,
+      from: 'You',
+      subject: msg.subject,
+      receivedDate: msg.sentDateTime,
+      preview: msg.bodyPreview?.substring(0, 100) || '',
+      hasAttachments: msg.hasAttachments,
+      attachmentCount: msg.attachmentCount || 0
+    }));
+
+    // Get user timezone for formatting
+    let userTimeZone = 'UTC';
+    if (sessionId) {
+      try {
+        const tz = await timezoneHelper.getUserTimeZone(sessionId, userToken);
+        if (tz) {
+          userTimeZone = tz;
+          console.log(`✓ Using user timezone: ${userTimeZone}`);
+        }
+      } catch (err) {
+        console.warn('⚠️ Could not retrieve user timezone, using UTC:', err.message);
+        userTimeZone = 'UTC';
+      }
+    } else {
+      console.warn('⚠️ No sessionId provided, using UTC timezone');
+    }
+
+    // Always use formatter with timezone (never fallback)
+    console.log(`📬 Formatting ${emailsList.length} sent emails with timezone: ${userTimeZone}`);
     return {
       success: true,
-      emails: messages.value.map(msg => ({
-        id: msg.id,
-        subject: msg.subject,
-        to: msg.toRecipients?.map(r => r.emailAddress.name || r.emailAddress.address).join(', ') || 'Unknown',
-        sentDate: new Date(msg.sentDateTime).toLocaleString(),
-        preview: msg.bodyPreview?.substring(0, 100) || ''
-      }))
+      emails: formatters.formatEmails(emailsList, userTimeZone)
     };
   } catch (error) {
     console.error('Error getting sent emails:', error);
@@ -1367,7 +1502,7 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
     const client = await getGraphClient(userToken);
 
     console.log('   📥 Fetching recent sent emails...');
-    
+
     const messages = await client
       .api('/me/mailFolders/sentItems/messages')
       .select('id,subject,toRecipients,sentDateTime')
@@ -1404,8 +1539,11 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
           return false;
         }
         return msg.toRecipients.some(r => {
+          // Match by email address OR display name
           const address = r.emailAddress?.address || '';
-          return address.toLowerCase().includes(recipientLower);
+          const name = r.emailAddress?.name || '';
+          return address.toLowerCase().includes(recipientLower) ||
+            name.toLowerCase().includes(recipientLower);
         });
       });
       console.log(`   🔍 After recipient filter ("${recipientEmail}"): ${candidates.length} matches`);
@@ -1415,7 +1553,7 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
       const criteria = [];
       if (subject) criteria.push(`subject containing "${subject}"`);
       if (recipientEmail) criteria.push(`recipient containing "${recipientEmail}"`);
-      
+
       console.log(`   ❌ No emails matched the criteria`);
       return {
         success: false,
@@ -1437,7 +1575,7 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
     await client.api(`/me/messages/${emailToDelete.id}`).delete();
 
     console.log('   ✅ Email deleted successfully!');
-    
+
     return {
       success: true,
       message: `Successfully deleted email: "${emailToDelete.subject}"`,
@@ -1449,11 +1587,11 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
 
   } catch (error) {
     console.error('❌ Error in deleteSentEmail:', error);
-    
+
     if (error.statusCode) {
       throw new Error(`Graph API error (${error.code || error.statusCode}): ${error.message}`);
     }
-    
+
     throw new Error('Failed to delete sent email: ' + error.message);
   }
 }
@@ -1463,16 +1601,16 @@ async function getUserProfilePhoto(userToken = null) {
   try {
     const client = await getGraphClient(userToken);
     console.log('🖼️ Calling Graph API for /me/photo/$value');
-    
+
     const photoResponse = await client.api('/me/photo/$value').get();
-    
+
     console.log('📦 Response received, type:', typeof photoResponse);
     console.log('📦 Is Buffer?:', Buffer.isBuffer(photoResponse));
     console.log('📦 Is Uint8Array?:', photoResponse instanceof Uint8Array);
     console.log('📦 Constructor name:', photoResponse?.constructor?.name);
-    
+
     let buffer;
-    
+
     // Handle Blob (from browser fetch)
     if (typeof Blob !== 'undefined' && photoResponse instanceof Blob) {
       console.log('📦 Response is a Blob - converting to Buffer...');
@@ -1482,26 +1620,26 @@ async function getUserProfilePhoto(userToken = null) {
       console.log('✅ Blob converted to Buffer, size:', buffer.length);
       return buffer;
     }
-    
+
     // Handle Buffer
     if (Buffer.isBuffer(photoResponse)) {
       buffer = photoResponse;
       console.log('✅ Response is a Buffer');
       return buffer;
     }
-    
+
     // Handle Uint8Array
     if (photoResponse instanceof Uint8Array) {
       buffer = Buffer.from(photoResponse);
       console.log('✅ Converted Uint8Array to Buffer');
       return buffer;
     }
-    
+
     // Handle Stream
     if (photoResponse && photoResponse._readableState) {
       console.log('📦 Response is a Stream - converting to Buffer...');
       const chunks = [];
-      
+
       return new Promise((resolve, reject) => {
         photoResponse.on('data', (chunk) => {
           chunks.push(chunk);
@@ -1517,7 +1655,7 @@ async function getUserProfilePhoto(userToken = null) {
         });
       });
     }
-    
+
     // Handle other objects
     if (typeof photoResponse === 'object' && photoResponse !== null) {
       if (photoResponse.data) {
@@ -1526,7 +1664,7 @@ async function getUserProfilePhoto(userToken = null) {
         return buffer;
       }
     }
-    
+
     // Fallback
     console.warn('⚠️ Unknown response type:', photoResponse?.constructor?.name);
     return null;
@@ -1542,6 +1680,7 @@ module.exports = {
   getAccessTokenByAuthCode,
   getAccessTokenByRefreshToken,
   getAccessTokenAppOnly,
+  getGraphClient,
   getRecentEmails,
   searchEmails,
   sendEmail,
