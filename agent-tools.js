@@ -1,4 +1,5 @@
 const graphTools = require('./graph-tools');
+const actionPreview = require('./action-preview');
 
 // =========================
 // 🔧 Define available tools
@@ -162,7 +163,7 @@ const tools = [
       }
     }
   },
-  
+
   // ============== DELETION TOOLS =================
   {
     type: 'function',
@@ -181,12 +182,18 @@ const tools = [
     type: 'function',
     function: {
       name: 'delete_sent_email',
-      description: 'delete a sent email.',
+      description: 'Delete a sent email from the Sent Items folder. Can delete by subject or recipient name. If no filters given, deletes the most recent sent email.',
       parameters: {
         type: 'object',
         properties: {
-          subject: { type: 'string' },
-          recipient_email: { type: 'string' }
+          subject: {
+            type: 'string',
+            description: 'Part of the email subject to match (optional)'
+          },
+          recipient_email: {
+            type: 'string',
+            description: 'Recipient name or email to match (optional)'
+          }
         }
       }
     }
@@ -195,11 +202,14 @@ const tools = [
     type: 'function',
     function: {
       name: 'delete_calendar_event',
-      description: 'delete calendar event.',
+      description: 'Delete a calendar event/meeting by its subject.',
       parameters: {
         type: 'object',
         properties: {
-          subject: { type: 'string' }
+          subject: {
+            type: 'string',
+            description: 'The meeting/event subject to delete'
+          }
         },
         required: ['subject']
       }
@@ -209,14 +219,23 @@ const tools = [
     type: 'function',
     function: {
       name: 'delete_teams_message',
-      description: 'delete a Teams message.',
+      description: 'Delete a Teams chat message. Can delete by message content or the most recent message you sent. Note: Only messages you sent can be deleted.',
       parameters: {
         type: 'object',
         properties: {
-          chat_id: { type: 'string' },
-          message_id: { type: 'string' }
-        },
-        required: ['chat_id', 'message_id']
+          chat_id: {
+            type: 'string',
+            description: 'Chat ID (optional - will search recent chats if not provided)'
+          },
+          message_id: {
+            type: 'string',
+            description: 'Message ID (optional - will find your most recent message if not provided)'
+          },
+          message_content: {
+            type: 'string',
+            description: 'Part of the message content to match (optional)'
+          }
+        }
       }
     }
   },
@@ -224,7 +243,7 @@ const tools = [
     type: 'function',
     function: {
       name: 'get_teams_messages',
-      description: 'Get Teams messages.',
+      description: 'Get recent Teams chat messages to see message IDs for deletion.',
       parameters: {
         type: 'object',
         properties: {
@@ -266,16 +285,55 @@ const functionMap = {
 // =================================================
 // 🚀 Execute a tool with proper parameter order
 // =================================================
-async function executeTool(functionName, args = {}, userToken = null) {
+// @param {string} functionName - Name of the tool to execute
+// @param {object} args - Arguments for the tool
+// @param {string} userToken - User's access token
+// @param {string} sessionId - Session ID for the user
+// @param {boolean} skipConfirmation - If true, skip confirmation flow (used when action already confirmed)
+async function executeTool(functionName, args = {}, userToken = null, sessionId = null, skipConfirmation = false) {
   const func = functionMap[functionName];
   if (!func) throw new Error(`Unknown function: ${functionName}`);
+
+  // Actions that require user confirmation
+  const confirmationRequiredActions = ['send_email', 'send_teams_message'];
+
+  // If action needs confirmation AND we're not skipping it, return preview instead of executing
+  if (confirmationRequiredActions.includes(functionName) && sessionId && !skipConfirmation) {
+    try {
+      let actionData = {};
+
+      if (functionName === 'send_email') {
+        actionData = {
+          recipientName: args.recipient_name,
+          subject: args.subject,
+          body: args.body,
+          ccRecipients: args.cc_recipients || []
+        };
+      } else if (functionName === 'send_teams_message') {
+        actionData = {
+          recipientName: args.recipient_name,
+          message: args.message
+        };
+      }
+
+      const preview = actionPreview.createActionPreview(functionName, actionData, sessionId);
+      return {
+        type: 'action_preview',
+        preview: preview,
+        message: 'Action requires confirmation. Review the preview and confirm to proceed.'
+      };
+    } catch (error) {
+      console.error('❌ Error creating action preview:', error);
+      // Fall through to normal execution if preview creation fails
+    }
+  }
 
   let params = [];
 
   switch (functionName) {
 
     case 'get_recent_emails':
-      params = [args.count || 5, userToken];
+      params = [args.count || 5, userToken, sessionId];
       break;
 
     case 'search_emails':
@@ -287,7 +345,7 @@ async function executeTool(functionName, args = {}, userToken = null) {
       break;
 
     case 'get_calendar_events':
-      params = [args.days || 7, userToken];
+      params = [args.days || 7, userToken, sessionId];
       break;
 
     case 'create_calendar_event':
@@ -311,7 +369,7 @@ async function executeTool(functionName, args = {}, userToken = null) {
       break;
 
     case 'get_recent_files':
-      params = [args.count || 10, userToken];
+      params = [args.count || 10, userToken, sessionId];
       break;
 
     case 'search_files':
@@ -328,7 +386,7 @@ async function executeTool(functionName, args = {}, userToken = null) {
       break;
 
     case 'get_sent_emails':
-      params = [args.count || 10, userToken];
+      params = [args.count || 10, userToken, sessionId];
       break;
 
     case 'delete_sent_email':
@@ -340,7 +398,8 @@ async function executeTool(functionName, args = {}, userToken = null) {
       break;
 
     case 'delete_teams_message':
-      params = [args.chat_id, args.message_id, null, userToken];
+      // Pass: chatId, messageId, messageContent, userToken
+      params = [args.chat_id || null, args.message_id || null, args.message_content || null, userToken];
       break;
 
     case 'get_teams_messages':
@@ -357,5 +416,6 @@ async function executeTool(functionName, args = {}, userToken = null) {
 // ======================================
 module.exports = {
   tools,
-  executeTool
+  executeTool,
+  actionPreview // Export action preview module for server.js to use
 };

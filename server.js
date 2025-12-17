@@ -56,7 +56,7 @@ app.get('/api/voices', (req, res) => {
     voiceName: value.name,
     language: value.language
   }));
-  
+
   res.json({
     voices: formattedVoices,
     default: 'american'
@@ -95,7 +95,7 @@ app.get('/api/user-profile', async (req, res) => {
 
     const token = userTokenStore.get(sessionId);
     const profileInfo = await graphTools.getSenderProfile(token);
-    
+
     res.json({
       displayName: profileInfo.displayName,
       email: profileInfo.email,
@@ -112,7 +112,7 @@ app.get('/api/user-photo', async (req, res) => {
   try {
     const sessionId = req.query.sessionId;
     console.log('📷 Photo request for session:', sessionId);
-    
+
     if (!sessionId || !userTokenStore.has(sessionId)) {
       console.warn('❌ Invalid session for photo request');
       return res.status(401).json({ error: 'No valid session' });
@@ -120,10 +120,10 @@ app.get('/api/user-photo', async (req, res) => {
 
     const token = userTokenStore.get(sessionId);
     console.log('📷 Fetching photo with token...');
-    
+
     const photoBuffer = await graphTools.getUserProfilePhoto(token);
     console.log('📷 Photo buffer returned, type:', typeof photoBuffer, 'length:', photoBuffer ? photoBuffer.length : 'null');
-    
+
     if (!photoBuffer) {
       console.warn('⚠️ No photo buffer returned');
       return res.status(404).json({ error: 'No profile photo found' });
@@ -153,7 +153,7 @@ app.get('/api/user-profile', async (req, res) => {
 
     const token = userTokenStore.get(sessionId);
     const profileInfo = await graphTools.getSenderProfile(token);
-    
+
     res.json({
       displayName: profileInfo.displayName,
       email: profileInfo.email,
@@ -170,7 +170,7 @@ app.get('/api/user-photo', async (req, res) => {
   try {
     const sessionId = req.query.sessionId;
     console.log('📷 Photo request for session:', sessionId);
-    
+
     if (!sessionId || !userTokenStore.has(sessionId)) {
       console.warn('❌ Invalid session for photo request');
       return res.status(401).json({ error: 'No valid session' });
@@ -178,10 +178,10 @@ app.get('/api/user-photo', async (req, res) => {
 
     const token = userTokenStore.get(sessionId);
     console.log('📷 Fetching photo with token...');
-    
+
     const photoBuffer = await graphTools.getUserProfilePhoto(token);
     console.log('📷 Photo buffer returned, type:', typeof photoBuffer, 'length:', photoBuffer ? photoBuffer.length : 'null');
-    
+
     if (!photoBuffer) {
       console.warn('⚠️ No photo buffer returned');
       return res.status(404).json({ error: 'No profile photo found' });
@@ -273,10 +273,34 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
     const agentResponse = await queryAgent(transcript, conversationHistory, sessionId, userToken);
     console.log('✓ Agent Response:', agentResponse);
 
-    // Step 3: Text-to-Speech with selected accent
-    console.log(`🔊 Generating speech with ${ttsService.getVoiceInfo(accent).displayName}...`);
-    const audioData = await ttsService.synthesizeText(agentResponse, accent);
-    console.log('✓ Audio generated, size:', audioData.length);
+    // Check if response is an action_preview (skip TTS for confirmations)
+    let isActionPreview = false;
+    let parsedPreview = null;
+    try {
+      if (typeof agentResponse === 'string' && agentResponse.startsWith('{')) {
+        parsedPreview = JSON.parse(agentResponse);
+        if (parsedPreview.type === 'action_preview') {
+          isActionPreview = true;
+          console.log('🔔 Action preview detected - skipping TTS');
+        }
+      }
+    } catch (e) {
+      // Not JSON, continue normally
+    }
+
+    // Step 3: Text-to-Speech with selected accent (skip for action previews)
+    let audioData = null;
+    if (!isActionPreview) {
+      console.log(`🔊 Generating speech with ${ttsService.getVoiceInfo(accent).displayName}...`);
+      audioData = await ttsService.synthesizeText(agentResponse, accent);
+      console.log('✓ Audio generated, size:', audioData.length);
+    } else {
+      // For action previews, speak a brief confirmation message
+      const confirmMessage = 'I need your confirmation before proceeding. Please check the preview.';
+      console.log(`🔊 Generating confirmation speech...`);
+      audioData = await ttsService.synthesizeText(confirmMessage, accent);
+      console.log('✓ Confirmation audio generated, size:', audioData.length);
+    }
 
     // Clean up temp files
     [tempWebm, tempWav].forEach(file => {
@@ -535,14 +559,36 @@ YOU MUST CALL: create_calendar_event(
 DELETE EMAIL:
 - "delete the email I just sent" → delete_sent_email()
 - "delete the email about meeting" → delete_sent_email(subject="meeting")
-- "delete the email to john" → First search_contact_email("john"), then delete_sent_email(recipient_email="john@...")
+- "delete the email to priyanshu" → delete_sent_email(recipient_email="priyanshu")
+  ⚠️ IMPORTANT: Use the recipient NAME directly (not email address). The system will match by name OR email.
 
 DELETE CALENDAR EVENT:
 - "delete the meeting with raj" → delete_calendar_event(subject="raj")
 - "cancel the standup meeting" → delete_calendar_event(subject="standup")
 
 DELETE TEAMS MESSAGE:
-- "delete the teams message I just sent" → delete_teams_message(chat_id=..., message_id=...)
+- "delete the teams message I just sent" → delete_teams_message()
+- "delete the hello message" → delete_teams_message(message_content="hello")
+- "delete the message to priyanshu" → delete_teams_message()
+  ⚠️ CRITICAL: Call delete_teams_message() DIRECTLY. Do NOT just call get_teams_messages to find it.
+  The delete function will automatically find and delete your most recent message.
+
+================================================================================
+📁 FILE SEARCH FORMATTING:
+================================================================================
+When searching for files using search_files:
+1. Show the file NAME, LOCATION, SIZE, and LAST MODIFIED DATE
+2. ALWAYS show the folder path/location using the "breadcrumb" or "location" field
+3. Format like: "You can find this file at: Documents → Projects → FileName.docx"
+4. DO NOT use markdown bold (**text**) - use plain text only
+5. Include the Open link for user to access
+
+Example response format (plain text, no markdown):
+"I found the file 'Report.docx':
+- Location: Documents → Work → Reports → Report.docx
+- Size: 1.5 MB
+- Last Modified: December 17, 2025
+- Click here to open: [link]"
 
 ================================================================================
 🚨 CRITICAL: YOU MUST USE TOOLS!
@@ -554,10 +600,15 @@ DELETE TEAMS MESSAGE:
 - For deleting emails → CALL delete_sent_email tool
 - For deleting meetings → CALL delete_calendar_event tool
 - For Teams messages → CALL send_teams_message or delete_teams_message tool
+- For file search → CALL search_files tool
 
 DO NOT just respond with text. ALWAYS call the appropriate tool when user requests an action.
 
-Keep voice responses short (1-2 sentences) after tool execution.
+⚠️ RESPONSE FORMATTING:
+- DO NOT use markdown bold (**text**) in responses
+- DO NOT use asterisks for emphasis
+- Use plain text and line breaks for formatting
+- Keep voice responses short (1-2 sentences) after tool execution.
 `
       }
     ];
@@ -605,12 +656,22 @@ Keep voice responses short (1-2 sentences) after tool execution.
         const functionName = toolCall.function.name;
         const functionArgs = JSON.parse(toolCall.function.arguments);
 
-        console.log(`  → Executing ${functionName} with args:`, JSON.stringify(functionArgs, null, 2));
+        console.log(`  → Executing ${functionName} with args: `, JSON.stringify(functionArgs, null, 2));
 
         try {
-          // ✅ FIXED: Pass userToken as third parameter to executeTool
-          const toolResult = await executeTool(functionName, functionArgs, userToken);
-          console.log(`  ✓ ${functionName} completed:`, toolResult);
+          // ✅ FIXED: Pass userToken and sessionId to executeTool
+          const toolResult = await executeTool(functionName, functionArgs, userToken, sessionId);
+          console.log(`  ✓ ${functionName} completed: `, toolResult);
+
+          // 🔍 Check if this is an action preview - if so, return immediately without AI processing
+          if (toolResult && typeof toolResult === 'object' && toolResult.type === 'action_preview') {
+            console.log('  🔔 Action preview detected - returning to user without further AI processing');
+            return JSON.stringify({
+              type: 'action_preview',
+              preview: toolResult.preview,
+              message: toolResult.message
+            });
+          }
 
           // Add tool result to messages
           messages.push({
@@ -619,7 +680,7 @@ Keep voice responses short (1-2 sentences) after tool execution.
             content: JSON.stringify(toolResult)
           });
         } catch (error) {
-          console.error(`  ✗ ${functionName} failed:`, error.message);
+          console.error(`  ✗ ${functionName} failed: `, error.message);
           messages.push({
             role: 'tool',
             tool_call_id: toolCall.id,
@@ -691,16 +752,16 @@ app.post('/api/text-message', express.json(), async (req, res) => {
     }
 
     const selectedAccent = accent || 'american';
-    
+
     // Validate accent
     if (!ttsService.isValidAccent(selectedAccent)) {
-      return res.status(400).json({ error: `Invalid accent: ${selectedAccent}` });
+      return res.status(400).json({ error: `Invalid accent: ${selectedAccent} ` });
     }
 
     console.log('\n=== Text Message Received ===');
     console.log(`✓ Message: "${text}"`);
-    console.log(`✓ Session ID: ${sessionId}`);
-    console.log(`✓ Accent: ${selectedAccent}`);
+    console.log(`✓ Session ID: ${sessionId} `);
+    console.log(`✓ Accent: ${selectedAccent} `);
 
     // Retrieve user token from session store
     const userToken = userTokenStore.get(sessionId);
@@ -748,6 +809,156 @@ app.post('/api/text-message', express.json(), async (req, res) => {
   }
 });
 
+// ============================================
+// 🔍 ACTION PREVIEW ENDPOINT
+// ============================================
+app.post('/api/preview-action', async (req, res) => {
+  try {
+    const { sessionId, actionType, actionData } = req.body;
+
+    if (!sessionId || !actionType || !actionData) {
+      return res.status(400).json({
+        error: 'Missing required parameters: sessionId, actionType, actionData'
+      });
+    }
+
+    // Check session
+    const userToken = userTokenStore.get(sessionId);
+    if (!userToken) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    // Import action preview module
+    const { actionPreview } = require('./agent-tools');
+
+    // Create preview
+    const preview = actionPreview.createActionPreview(actionType, actionData, sessionId);
+
+    console.log(`✓ Preview created for ${actionType}: `, preview.actionId);
+
+    res.json({
+      success: true,
+      preview: preview
+    });
+  } catch (error) {
+    console.error('❌ Error creating action preview:', error.message);
+    res.status(500).json({
+      error: error.message || 'Failed to create action preview'
+    });
+  }
+});
+
+// ============================================
+// ✅ ACTION CONFIRMATION ENDPOINT
+// ============================================
+app.post('/api/confirm-action', async (req, res) => {
+  try {
+    const { sessionId, actionId, userChoice, edits } = req.body;
+
+    if (!sessionId || !actionId || !userChoice) {
+      return res.status(400).json({
+        error: 'Missing required parameters: sessionId, actionId, userChoice'
+      });
+    }
+
+    // Check session
+    const userToken = userTokenStore.get(sessionId);
+    if (!userToken) {
+      return res.status(401).json({ error: 'Invalid or expired session' });
+    }
+
+    // Import action preview and agent tools modules
+    const { actionPreview, executeTool } = require('./agent-tools');
+
+    // Handle user choice
+    if (userChoice === 'edit') {
+      // Apply edits to pending action
+      if (edits) {
+        actionPreview.editPendingAction(actionId, edits);
+      }
+      const updatedAction = actionPreview.getActionForExecution(actionId);
+      return res.json({
+        success: true,
+        message: 'Action edited successfully',
+        action: updatedAction
+      });
+    }
+
+    if (userChoice === 'confirm') {
+      // First confirm the action in the store
+      const confirmResult = actionPreview.confirmAction(actionId, { confirmed: true });
+      if (!confirmResult.success) {
+        return res.status(404).json({
+          error: confirmResult.error || 'Action not found or already processed'
+        });
+      }
+
+      // Get the confirmed action data
+      const pendingActionData = actionPreview.getPendingAction(actionId);
+      if (!pendingActionData) {
+        return res.status(404).json({
+          error: 'Action not found or expired'
+        });
+      }
+
+      // Use edited data if available, otherwise use original data
+      const actionData = pendingActionData.editedData || pendingActionData.originalData;
+      const actionType = pendingActionData.actionType;
+
+      // Execute the action with skipConfirmation=true to avoid infinite loop
+      try {
+        let result;
+        if (actionType === 'send_email') {
+          result = await executeTool('send_email', {
+            recipient_name: actionData.recipientName,
+            subject: actionData.subject,
+            body: actionData.body,
+            cc_recipients: actionData.ccRecipients || []
+          }, userToken, sessionId, true);  // skipConfirmation = true
+        } else if (actionType === 'send_teams_message') {
+          result = await executeTool('send_teams_message', {
+            recipient_name: actionData.recipientName,
+            message: actionData.message
+          }, userToken, sessionId, true);  // skipConfirmation = true
+        }
+
+        // Clear the action after successful execution
+        actionPreview.clearAction(actionId);
+
+        console.log(`✓ Action executed: ${actionType} `);
+
+        res.json({
+          success: true,
+          message: actionType === 'send_email'
+            ? `Email sent successfully to ${actionData.recipientName} `
+            : `Teams message sent to ${actionData.recipientName} `,
+          result: result
+        });
+      } catch (executionError) {
+        console.error('❌ Error executing action:', executionError.message);
+        res.status(500).json({
+          error: 'Failed to execute action: ' + executionError.message
+        });
+      }
+    } else if (userChoice === 'cancel') {
+      console.log(`✓ Action cancelled: ${actionId} `);
+      res.json({
+        success: true,
+        message: 'Action cancelled'
+      });
+    } else {
+      return res.status(400).json({
+        error: 'Invalid userChoice. Must be "confirm", "edit", or "cancel"'
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error confirming action:', error.message);
+    res.status(500).json({
+      error: error.message || 'Failed to process action confirmation'
+    });
+  }
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`
@@ -762,6 +973,7 @@ app.listen(PORT, () => {
   ${process.env.AZURE_OPENAI_KEY ? '✓' : '✗'} Azure OpenAI ${process.env.AZURE_OPENAI_DEPLOYMENT ? `(${process.env.AZURE_OPENAI_DEPLOYMENT})` : ''}
   
   ${!process.env.AZURE_SPEECH_KEY || !process.env.AZURE_OPENAI_KEY ?
-      '⚠️  Please configure your .env file with Azure credentials\n' : '✓ All services configured - Ready to use!\n'}
-  `);
+      '⚠️  Please configure your .env file with Azure credentials\n' : '✓ All services configured - Ready to use!\n'
+    }
+    `);
 });
