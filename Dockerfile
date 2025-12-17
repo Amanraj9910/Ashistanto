@@ -38,6 +38,9 @@ COPY auth.js .
 COPY tts-service.js .
 COPY agent-tools.js .
 COPY graph-tools.js .
+COPY formatters.js .
+COPY timezone-helper.js .
+COPY action-preview.js .
 COPY public/ ./public/
 
 # Create working directory with proper ownership for node user
