@@ -88,21 +88,40 @@ app.get('/api/debug/sessions', (req, res) => {
 // Get user profile info (name, email, etc)
 app.get('/api/user-profile', async (req, res) => {
   try {
+    console.log('\n🔍 [/api/user-profile] Request received');
+
     const sessionId = req.query.sessionId;
+    console.log('🔍 [/api/user-profile] Session ID:', sessionId);
+
     if (!sessionId || !userTokenStore.has(sessionId)) {
+      console.error('❌ [/api/user-profile] No valid session found');
+      console.error('❌ [/api/user-profile] Session ID provided:', sessionId);
+      console.error('❌ [/api/user-profile] Session exists in store:', userTokenStore.has(sessionId));
       return res.status(401).json({ error: 'No valid session' });
     }
 
-    const token = userTokenStore.get(sessionId);
-    const profileInfo = await graphTools.getSenderProfile(token);
+    console.log('✅ [/api/user-profile] Valid session found, fetching profile...');
 
-    res.json({
+    // Pass sessionId for automatic token refresh
+    const profileInfo = await graphTools.getSenderProfile(null, sessionId);
+
+    console.log('✅ [/api/user-profile] Profile info received:', {
       displayName: profileInfo.displayName,
       email: profileInfo.email,
       firstName: profileInfo.displayName.split(' ')[0]
     });
+
+    const response = {
+      displayName: profileInfo.displayName,
+      email: profileInfo.email,
+      firstName: profileInfo.displayName.split(' ')[0]
+    };
+
+    console.log('✅ [/api/user-profile] Sending response to frontend:', response);
+    res.json(response);
   } catch (err) {
-    console.error('Error fetching user profile:', err);
+    console.error('❌ [/api/user-profile] Error fetching user profile:', err);
+    console.error('❌ [/api/user-profile] Error stack:', err.stack);
     res.status(500).json({ error: 'Failed to fetch user profile' });
   }
 });
@@ -118,10 +137,10 @@ app.get('/api/user-photo', async (req, res) => {
       return res.status(401).json({ error: 'No valid session' });
     }
 
-    const token = userTokenStore.get(sessionId);
-    console.log('📷 Fetching photo with token...');
+    console.log('📷 Fetching photo with sessionId...');
 
-    const photoBuffer = await graphTools.getUserProfilePhoto(token);
+    // Pass sessionId for automatic token refresh
+    const photoBuffer = await graphTools.getUserProfilePhoto(null, sessionId);
     console.log('📷 Photo buffer returned, type:', typeof photoBuffer, 'length:', photoBuffer ? photoBuffer.length : 'null');
 
     if (!photoBuffer) {
@@ -143,63 +162,9 @@ app.get('/api/user-photo', async (req, res) => {
   }
 });
 
-// Get user profile info (name, email, etc)
-app.get('/api/user-profile', async (req, res) => {
-  try {
-    const sessionId = req.query.sessionId;
-    if (!sessionId || !userTokenStore.has(sessionId)) {
-      return res.status(401).json({ error: 'No valid session' });
-    }
 
-    const token = userTokenStore.get(sessionId);
-    const profileInfo = await graphTools.getSenderProfile(token);
 
-    res.json({
-      displayName: profileInfo.displayName,
-      email: profileInfo.email,
-      firstName: profileInfo.displayName.split(' ')[0]
-    });
-  } catch (err) {
-    console.error('Error fetching user profile:', err);
-    res.status(500).json({ error: 'Failed to fetch user profile' });
-  }
-});
 
-// Get user profile photo
-app.get('/api/user-photo', async (req, res) => {
-  try {
-    const sessionId = req.query.sessionId;
-    console.log('📷 Photo request for session:', sessionId);
-
-    if (!sessionId || !userTokenStore.has(sessionId)) {
-      console.warn('❌ Invalid session for photo request');
-      return res.status(401).json({ error: 'No valid session' });
-    }
-
-    const token = userTokenStore.get(sessionId);
-    console.log('📷 Fetching photo with token...');
-
-    const photoBuffer = await graphTools.getUserProfilePhoto(token);
-    console.log('📷 Photo buffer returned, type:', typeof photoBuffer, 'length:', photoBuffer ? photoBuffer.length : 'null');
-
-    if (!photoBuffer) {
-      console.warn('⚠️ No photo buffer returned');
-      return res.status(404).json({ error: 'No profile photo found' });
-    }
-
-    if (Buffer.isBuffer(photoBuffer)) {
-      console.log('✅ Photo is a proper Buffer, size:', photoBuffer.length);
-    } else {
-      console.warn('⚠️ Photo is not a Buffer, type:', typeof photoBuffer);
-    }
-
-    res.set('Content-Type', 'image/jpeg');
-    res.send(photoBuffer);
-  } catch (err) {
-    console.error('❌ Error fetching user photo:', err);
-    res.status(500).json({ error: 'Failed to fetch user photo' });
-  }
-});
 
 // Store conversation history per session (in production, use database)
 const conversationSessions = new Map();
@@ -264,13 +229,9 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
     // Step 2: Query Azure OpenAI Agent
     console.log('🤖 Querying AI agent...');
     const conversationHistory = conversationSessions.get(sessionId);
-    const userToken = userTokenStore.get(sessionId);
 
-    if (!userToken) {
-      console.warn('⚠️  No user token found for session:', sessionId);
-    }
-
-    const agentResponse = await queryAgent(transcript, conversationHistory, sessionId, userToken);
+    // Don't pass token object - pass sessionId for automatic token refresh
+    const agentResponse = await queryAgent(transcript, conversationHistory, sessionId, null);
     console.log('✓ Agent Response:', agentResponse);
 
     // Check if response is an action_preview (skip TTS for confirmations)
@@ -366,6 +327,43 @@ async function speechToText(wavBuffer) {
       }
 
       console.log('  → Initializing Azure Speech SDK...');
+
+      // 🔍 DIAGNOSTICS: Analyze WAV file
+      console.log('  📊 Audio Diagnostics:');
+      console.log(`     Total size: ${wavBuffer.length} bytes`);
+      console.log(`     Header size: 44 bytes`);
+      console.log(`     PCM data size: ${wavBuffer.length - 44} bytes`);
+
+      // Read WAV header info
+      const sampleRate = wavBuffer.readUInt32LE(24);
+      const bitsPerSample = wavBuffer.readUInt16LE(34);
+      const numChannels = wavBuffer.readUInt16LE(22);
+      const duration = (wavBuffer.length - 44) / (sampleRate * numChannels * (bitsPerSample / 8));
+
+      console.log(`     Sample rate: ${sampleRate} Hz`);
+      console.log(`     Channels: ${numChannels}`);
+      console.log(`     Bits per sample: ${bitsPerSample}`);
+      console.log(`     Duration: ${duration.toFixed(2)} seconds`);
+
+      // Check if audio is too short
+      if (duration < 0.5) {
+        console.log('  ⚠️ WARNING: Audio is very short (< 0.5s)');
+      }
+
+      // Analyze audio levels
+      const pcmData = wavBuffer.slice(44);
+      let maxAmplitude = 0;
+      for (let i = 0; i < Math.min(pcmData.length, 10000); i += 2) {
+        const sample = Math.abs(pcmData.readInt16LE(i));
+        if (sample > maxAmplitude) maxAmplitude = sample;
+      }
+      const volumePercent = (maxAmplitude / 32768 * 100).toFixed(1);
+      console.log(`     Max volume: ${volumePercent}%`);
+
+      if (maxAmplitude < 1000) {
+        console.log('  ⚠️ WARNING: Audio level is very low - speak louder!');
+      }
+
       const speechConfig = sdk.SpeechConfig.fromSubscription(speechKey, speechRegion);
       speechConfig.speechRecognitionLanguage = 'en-US';
 
@@ -375,7 +373,6 @@ async function speechToText(wavBuffer) {
       const pushStream = sdk.AudioInputStream.createPushStream();
 
       // Skip WAV header (first 44 bytes) and push the raw PCM data
-      const pcmData = wavBuffer.slice(44);
       pushStream.write(pcmData);
       pushStream.close();
 
@@ -394,6 +391,11 @@ async function speechToText(wavBuffer) {
             resolve(result.text);
           } else if (result.reason === sdk.ResultReason.NoMatch) {
             console.log('  ⚠ No speech could be recognized');
+            console.log(`  💡 Possible reasons:`);
+            console.log(`     - Audio too short (${duration.toFixed(2)}s)`);
+            console.log(`     - Volume too low (${volumePercent}%)`);
+            console.log(`     - Background noise masking speech`);
+            console.log(`     - Speaking too fast or unclear`);
             reject(new Error('No speech was detected. Please speak clearly and try again.'));
           } else if (result.reason === sdk.ResultReason.Canceled) {
             const cancellation = sdk.CancellationDetails.fromResult(result);
@@ -763,14 +765,13 @@ app.post('/api/text-message', express.json(), async (req, res) => {
     console.log(`✓ Session ID: ${sessionId} `);
     console.log(`✓ Accent: ${selectedAccent} `);
 
-    // Retrieve user token from session store
-    const userToken = userTokenStore.get(sessionId);
-    if (!userToken) {
+    // Verify session exists
+    if (!userTokenStore.has(sessionId)) {
       return res.status(401).json({ error: 'Invalid or expired session' });
     }
 
-    // Query the AI agent with the text message
-    const response = await queryAgent(text, conversationSessions.get(sessionId) || [], sessionId, userToken);
+    // Query the AI agent with the text message (pass null for userToken, sessionId for automatic refresh)
+    const response = await queryAgent(text, conversationSessions.get(sessionId) || [], sessionId, null);
 
     // Get or create conversation history for this session
     if (!conversationSessions.has(sessionId)) {
@@ -905,6 +906,12 @@ app.post('/api/confirm-action', async (req, res) => {
       const actionData = pendingActionData.editedData || pendingActionData.originalData;
       const actionType = pendingActionData.actionType;
 
+      // ✅ OPTIMIZATION: Get cached validated recipient data
+      const validatedRecipientData = pendingActionData.validatedRecipientData || null;
+      if (validatedRecipientData) {
+        console.log(`  ⚡ Using cached recipient data for fast execution`);
+      }
+
       // Execute the action with skipConfirmation=true to avoid infinite loop
       try {
         let result;
@@ -915,11 +922,51 @@ app.post('/api/confirm-action', async (req, res) => {
             body: actionData.body,
             cc_recipients: actionData.ccRecipients || []
           }, userToken, sessionId, true);  // skipConfirmation = true
+
+          // ✅ OPTIMIZATION: Pass cached data directly to sendEmail
+          if (validatedRecipientData) {
+            const graphTools = require('./graph-tools');
+            result = await graphTools.sendEmail(
+              actionData.recipientName,
+              actionData.subject,
+              actionData.body,
+              actionData.ccRecipients || [],
+              userToken,
+              validatedRecipientData  // Pass cached data
+            );
+          }
         } else if (actionType === 'send_teams_message') {
           result = await executeTool('send_teams_message', {
             recipient_name: actionData.recipientName,
             message: actionData.message
           }, userToken, sessionId, true);  // skipConfirmation = true
+
+          // ✅ OPTIMIZATION: Pass cached data directly to sendTeamsMessage
+          if (validatedRecipientData) {
+            const graphTools = require('./graph-tools');
+            result = await graphTools.sendTeamsMessage(
+              actionData.recipientName,
+              actionData.message,
+              userToken,
+              validatedRecipientData  // Pass cached data
+            );
+          }
+        } else if (actionType === 'delete_sent_email') {
+          // Execute deletion with cached message ID
+          const graphTools = require('./graph-tools');
+          result = await graphTools.deleteEmail(actionData.messageId, userToken);
+        } else if (actionType === 'delete_teams_message') {
+          // Execute deletion with cached chat and message IDs
+          const graphTools = require('./graph-tools');
+          const client = await graphTools.getGraphClient(userToken);
+          await client
+            .api(`/chats/${actionData.chatId}/messages/${actionData.messageId}/softDelete`)
+            .post({});
+          result = {
+            success: true,
+            message: 'Teams message deleted successfully',
+            deletedMessageId: actionData.messageId
+          };
         }
 
         // Clear the action after successful execution
@@ -931,7 +978,11 @@ app.post('/api/confirm-action', async (req, res) => {
           success: true,
           message: actionType === 'send_email'
             ? `Email sent successfully to ${actionData.recipientName} `
-            : `Teams message sent to ${actionData.recipientName} `,
+            : actionType === 'send_teams_message'
+              ? `Teams message sent to ${actionData.recipientName} `
+              : actionType === 'delete_sent_email'
+                ? `Email deleted successfully`
+                : `Teams message deleted successfully`,
           result: result
         });
       } catch (executionError) {

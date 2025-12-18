@@ -52,8 +52,13 @@ router.get('/callback', async (req, res) => {
       email: tokens.account.username
     };
 
-    // Store token for later use in voice processing
-    userTokenStore.set(sessionId, tokens.accessToken);
+    // Store tokens with expiration metadata for automatic refresh
+    userTokenStore.set(sessionId, {
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      expiresAt: Date.now() + ((tokens.expiresIn || 3600) * 1000), // Default 1 hour if not provided
+      email: tokens.account.username
+    });
 
     console.log('✅ User logged in:', loggedInUser.email);
     console.log('📌 Session ID:', sessionId);
@@ -183,13 +188,14 @@ router.get('/user', (req, res) => {
 
 router.get('/session-token/:sessionId', (req, res) => {
   const { sessionId } = req.params;
-  const token = userTokenStore.get(sessionId);
+  const tokenData = userTokenStore.get(sessionId);
 
-  if (!token) {
+  if (!tokenData) {
     return res.status(404).json({ error: 'Session not found or token expired' });
   }
 
-  res.json({ accessToken: token });
+  // Return access token from the token object
+  res.json({ accessToken: tokenData.accessToken });
 });
 
 module.exports = { router, loggedInUser, userTokenStore };

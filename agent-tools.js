@@ -295,13 +295,15 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
   if (!func) throw new Error(`Unknown function: ${functionName}`);
 
   // Actions that require user confirmation
-  const confirmationRequiredActions = ['send_email', 'send_teams_message'];
+  const confirmationRequiredActions = ['send_email', 'send_teams_message', 'delete_sent_email', 'delete_teams_message'];
 
-  // If action needs confirmation AND we're not skipping it, return preview instead of executing
+  // If action needs confirmation AND we're not skipping it, validate user and return preview
   if (confirmationRequiredActions.includes(functionName) && sessionId && !skipConfirmation) {
     try {
       let actionData = {};
+      let validatedRecipientData = null;
 
+      // ✅ EARLY VALIDATION: Validate recipient BEFORE creating preview
       if (functionName === 'send_email') {
         actionData = {
           recipientName: args.recipient_name,
@@ -309,14 +311,104 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
           body: args.body,
           ccRecipients: args.cc_recipients || []
         };
+
+        // Validate recipient exists
+        console.log(`🔍 Validating recipient: ${args.recipient_name}`);
+        const searchResult = await graphTools.searchContactEmail(args.recipient_name, userToken, sessionId);
+
+        if (!searchResult.found) {
+          // ❌ User not found - return error immediately (no preview)
+          console.log(`  ❌ Recipient not found: ${args.recipient_name}`);
+          return {
+            success: false,
+            notFound: true,
+            searchedName: searchResult.searchedName,
+            message: searchResult.message || `I couldn't find anyone named "${args.recipient_name}" in the organization. Please verify the name or provide their email address.`
+          };
+        }
+
+        // ✅ User found - cache the validated data
+        validatedRecipientData = {
+          recipientName: searchResult.results[0].name,
+          recipientEmail: searchResult.results[0].email,
+          source: searchResult.results[0].source
+        };
+        console.log(`  ✅ Recipient validated: ${validatedRecipientData.recipientEmail}`);
+
       } else if (functionName === 'send_teams_message') {
         actionData = {
           recipientName: args.recipient_name,
           message: args.message
         };
+
+        // Validate recipient exists
+        console.log(`🔍 Validating recipient: ${args.recipient_name}`);
+        const searchResult = await graphTools.searchContactEmail(args.recipient_name, userToken, sessionId);
+
+        if (!searchResult.found) {
+          // ❌ User not found - return error immediately (no preview)
+          console.log(`  ❌ Recipient not found: ${args.recipient_name}`);
+          return {
+            success: false,
+            notFound: true,
+            searchedName: searchResult.searchedName,
+            message: searchResult.message || `I couldn't find anyone named "${args.recipient_name}" in the organization. Please verify the name or provide their email address.`
+          };
+        }
+
+        // ✅ User found - cache the validated data
+        validatedRecipientData = {
+          recipientName: searchResult.results[0].name,
+          recipientEmail: searchResult.results[0].email,
+          source: searchResult.results[0].source
+        };
+        console.log(`  ✅ Recipient validated: ${validatedRecipientData.recipientEmail}`);
+
+      } else if (functionName === 'delete_sent_email') {
+        // Find the email to delete first
+        console.log(`🔍 Finding email to delete...`);
+        const searchResult = await graphTools.deleteSentEmail(args.subject || null, args.recipient_email || null, userToken, true); // true = preview mode
+
+        if (!searchResult.success || searchResult.notFound) {
+          return {
+            success: false,
+            notFound: true,
+            message: searchResult.message || 'No matching email found to delete'
+          };
+        }
+
+        actionData = {
+          subject: searchResult.emailToDelete.subject,
+          recipient: searchResult.emailToDelete.recipient,
+          sentDate: searchResult.emailToDelete.sentDate,
+          messageId: searchResult.emailToDelete.id
+        };
+        console.log(`  ✅ Found email to delete: "${actionData.subject}"`);
+
+      } else if (functionName === 'delete_teams_message') {
+        // Find the Teams message to delete first
+        console.log(`🔍 Finding Teams message to delete...`);
+        const searchResult = await graphTools.deleteTeamsMessage(args.chat_id || null, args.message_id || null, args.message_content || null, userToken, true); // true = preview mode
+
+        if (!searchResult.success || searchResult.notFound) {
+          return {
+            success: false,
+            notFound: true,
+            message: searchResult.message || 'No matching Teams message found to delete'
+          };
+        }
+
+        actionData = {
+          messageContent: searchResult.messageToDelete.content,
+          sentDate: searchResult.messageToDelete.sentDate,
+          chatId: searchResult.messageToDelete.chatId,
+          messageId: searchResult.messageToDelete.messageId
+        };
+        console.log(`  ✅ Found Teams message to delete`);
       }
 
-      const preview = actionPreview.createActionPreview(functionName, actionData, sessionId);
+      // Create preview with cached validated data
+      const preview = actionPreview.createActionPreview(functionName, actionData, validatedRecipientData);
       return {
         type: 'action_preview',
         preview: preview,
@@ -324,7 +416,11 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       };
     } catch (error) {
       console.error('❌ Error creating action preview:', error);
-      // Fall through to normal execution if preview creation fails
+      // Return error instead of falling through to execution
+      return {
+        success: false,
+        error: error.message || 'Failed to validate recipient'
+      };
     }
   }
 
@@ -341,7 +437,7 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       break;
 
     case 'send_email':
-      params = [args.recipient_name, args.subject, args.body, args.cc_recipients || [], userToken];
+      params = [args.recipient_name, args.subject, args.body, args.cc_recipients || [], userToken, null];
       break;
 
     case 'get_calendar_events':
@@ -365,7 +461,7 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       break;
 
     case 'send_teams_message':
-      params = [args.recipient_name, args.message, userToken];
+      params = [args.recipient_name, args.message, userToken, null];
       break;
 
     case 'get_recent_files':
@@ -382,7 +478,7 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       break;
 
     case 'search_contact_email':
-      params = [args.name, userToken];
+      params = [args.name, userToken, sessionId];
       break;
 
     case 'get_sent_emails':
