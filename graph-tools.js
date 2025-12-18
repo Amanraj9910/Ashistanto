@@ -150,15 +150,38 @@ async function getGraphClient(userAccessToken = null, sessionId = null) {
   // If sessionId is provided, use the token refresh middleware
   if (sessionId) {
     const { userTokenStore } = require('./auth');
-    const { refreshTokenIfNeeded } = require('./token-refresh-middleware');
+    // Use direct token retrieval to avoid circular dependency
+    const tokenData = userTokenStore.get(sessionId);
+    
+    if (!tokenData) {
+      throw new Error('Session not found. Please log in again.');
+    }
 
-    try {
-      // Automatically refresh token if needed
-      accessToken = await refreshTokenIfNeeded(sessionId);
+    // Check if token needs refresh (expires in less than 5 minutes)
+    const timeUntilExpiry = (tokenData.expiresAt || 0) - Date.now();
+    const REFRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+
+    if (timeUntilExpiry < REFRESH_THRESHOLD && tokenData.refreshToken) {
+      try {
+        // Refresh token if needed
+        const newTokenResponse = await getAccessTokenByRefreshToken(tokenData.refreshToken);
+        const updatedTokenData = {
+          accessToken: newTokenResponse.accessToken || newTokenResponse,
+          refreshToken: newTokenResponse.refreshToken || tokenData.refreshToken,
+          expiresAt: Date.now() + ((newTokenResponse.expiresIn || 3600) * 1000),
+          email: tokenData.email
+        };
+        userTokenStore.set(sessionId, updatedTokenData);
+        accessToken = updatedTokenData.accessToken;
+        console.log(`✅ Token refreshed for session: ${sessionId}`);
+      } catch (error) {
+        console.error(`❌ Token refresh failed for session ${sessionId}:`, error.message);
+        userTokenStore.delete(sessionId);
+        throw new Error('Token refresh failed. Please log in again.');
+      }
+    } else {
+      accessToken = tokenData.accessToken;
       console.log(`✓ Using token for session: ${sessionId}`);
-    } catch (error) {
-      console.error(`❌ Token refresh failed for session ${sessionId}:`, error.message);
-      throw new Error('Authentication failed. Please log in again.');
     }
   } else if (userAccessToken) {
     accessToken = userAccessToken;
