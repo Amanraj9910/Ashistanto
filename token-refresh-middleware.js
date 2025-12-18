@@ -1,4 +1,3 @@
-const { getAccessTokenByRefreshToken } = require('./graph-tools');
 const { userTokenStore } = require('./auth');
 
 /**
@@ -44,6 +43,9 @@ async function refreshTokenIfNeeded(sessionId) {
     console.log(`🔄 Refreshing token for session: ${sessionId}`);
 
     try {
+        // Lazy import to avoid circular dependency
+        const { getAccessTokenByRefreshToken } = require('./graph-tools');
+        
         // Get new access token using refresh token
         const newTokenResponse = await getAccessTokenByRefreshToken(tokenData.refreshToken);
 
