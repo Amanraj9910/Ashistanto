@@ -15,6 +15,21 @@ router.get('/login', async (req, res) => {
   res.redirect(url);
 });
 
+// Logout endpoint - clear session
+router.post('/logout', (req, res) => {
+  const { sessionId } = req.body;
+
+  if (sessionId && userTokenStore.has(sessionId)) {
+    userTokenStore.delete(sessionId);
+    console.log('✅ Session cleared:', sessionId);
+  }
+
+  // Clear the logged in user
+  loggedInUser = null;
+
+  res.json({ success: true, message: 'Logged out successfully' });
+});
+
 // Alternative route for /redirect (alias for /login)
 router.get('/redirect', async (req, res) => {
   const url = await getAuthUrl();
@@ -26,23 +41,23 @@ router.get('/callback', async (req, res) => {
   try {
     const code = req.query.code;
     const tokens = await getAccessTokenByAuthCode(code);
-    
+
     // Generate a session ID for this user 
     const sessionId = `session_${Date.now()}`;
-    
+
     loggedInUser = {
       sessionId: sessionId,
       accessToken: tokens.accessToken,
       refreshToken: tokens.refreshToken,
       email: tokens.account.username
     };
-    
+
     // Store token for later use in voice processing
     userTokenStore.set(sessionId, tokens.accessToken);
-    
+
     console.log('✅ User logged in:', loggedInUser.email);
     console.log('📌 Session ID:', sessionId);
-    
+
     res.redirect(`/auth/success?sessionId=${sessionId}`);
   } catch (err) {
     console.error('❌ Login failed:', err);
@@ -56,49 +71,97 @@ router.get('/success', (req, res) => {
   if (!loggedInUser) return res.send('No active session');
   res.send(`
     <!DOCTYPE html>
-    <html>
+    <html lang="en">
     <head>
-      <title>Login Successful</title>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Login Successful - Ashistanto</title>
+      <link rel="icon" href="/img/favicon.ico.png" type="image/png">
+      <script src="https://cdn.tailwindcss.com"></script>
       <style>
-        body {
-          font-family: Arial, sans-serif;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
-          margin: 0;
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-          color: white;
+        @keyframes checkmark {
+          0% { transform: scale(0) rotate(45deg); }
+          50% { transform: scale(1.2) rotate(45deg); }
+          100% { transform: scale(1) rotate(45deg); }
         }
-        .container {
-          text-align: center;
-          background: rgba(255, 255, 255, 0.1);
-          padding: 40px;
-          border-radius: 15px;
-          backdrop-filter: blur(10px);
+        
+        @keyframes fadeIn {
+          from { opacity: 0; transform: translateY(20px); }
+          to { opacity: 1; transform: translateY(0); }
         }
-        .spinner {
-          border: 4px solid rgba(255, 255, 255, 0.3);
-          border-top: 4px solid white;
-          border-radius: 50%;
-          width: 40px;
-          height: 40px;
-          animation: spin 1s linear infinite;
-          margin: 20px auto;
+        
+        .checkmark-circle {
+          animation: fadeIn 0.5s ease-out;
         }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
+        
+        .checkmark {
+          animation: checkmark 0.6s ease-out 0.3s both;
+        }
+        
+        .fade-in {
+          animation: fadeIn 0.8s ease-out 0.5s both;
         }
       </style>
     </head>
-    <body>
-      <div class="container">
-        <h2>✅ Logged in as ${loggedInUser.email}</h2>
-        <p>Session ID: <strong>${sessionId}</strong></p>
-        <div class="spinner"></div>
-        <p>Redirecting you back to the app...</p>
+    <body class="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200">
+      <!-- Background decorative elements -->
+      <div class="fixed inset-0 overflow-hidden pointer-events-none">
+        <div class="absolute top-20 left-10 w-72 h-72 bg-red-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
+        <div class="absolute top-40 right-10 w-72 h-72 bg-red-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse" style="animation-delay: 2s;"></div>
+        <div class="absolute bottom-20 left-1/2 w-72 h-72 bg-red-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse" style="animation-delay: 4s;"></div>
       </div>
+
+      <div class="relative min-h-screen flex items-center justify-center px-4">
+        <div class="max-w-md w-full">
+          <!-- Success card -->
+          <div class="bg-white rounded-2xl shadow-2xl p-8 backdrop-blur-sm bg-opacity-95 text-center">
+            <!-- Success checkmark -->
+            <div class="checkmark-circle mb-6">
+              <div class="w-24 h-24 mx-auto bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-lg">
+                <svg class="checkmark w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
+                </svg>
+              </div>
+            </div>
+
+            <!-- Success message -->
+            <div class="fade-in">
+              <h2 class="text-3xl font-bold text-gray-800 mb-3">Login Successful!</h2>
+              <p class="text-gray-600 mb-2">Welcome back,</p>
+              <p class="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-red-600 mb-6">
+                ${loggedInUser.email}
+              </p>
+
+              <!-- Loading indicator -->
+              <div class="flex items-center justify-center gap-2 text-gray-500 mb-4">
+                <svg class="animate-spin h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="text-sm">Redirecting to your dashboard...</span>
+              </div>
+
+              <!-- Progress bar -->
+              <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+                <div class="bg-gradient-to-r from-red-500 to-red-600 h-2 rounded-full transition-all duration-2000" style="width: 0%; animation: progress 2s ease-out forwards;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div class="text-center mt-6 text-gray-600 text-sm fade-in">
+            <p>🔒 Secure session established</p>
+          </div>
+        </div>
+      </div>
+
+      <style>
+        @keyframes progress {
+          from { width: 0%; }
+          to { width: 100%; }
+        }
+      </style>
+
       <script>
         // Store session ID in localStorage
         localStorage.setItem('userSessionId', '${sessionId}');
@@ -121,11 +184,11 @@ router.get('/user', (req, res) => {
 router.get('/session-token/:sessionId', (req, res) => {
   const { sessionId } = req.params;
   const token = userTokenStore.get(sessionId);
-  
+
   if (!token) {
     return res.status(404).json({ error: 'Session not found or token expired' });
   }
-  
+
   res.json({ accessToken: token });
 });
 

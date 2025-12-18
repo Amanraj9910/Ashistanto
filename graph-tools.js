@@ -51,7 +51,8 @@ async function getAuthUrl() {
     response_type: 'code',
     redirect_uri: redirectUri,
     response_mode: 'query',
-    scope: scopes.join(' ')
+    scope: scopes.join(' '),
+    prompt: 'select_account'  // Force account selection screen
   });
 
   return `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}/oauth2/v2.0/authorize?${params.toString()}`;
