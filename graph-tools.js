@@ -119,7 +119,8 @@ async function getAccessTokenByRefreshToken(refreshToken) {
     };
 
     const response = await msalClient.acquireTokenByRefreshToken(tokenRequest);
-    return response.accessToken;
+    // Return full response object including accessToken, expiresIn, etc.
+    return response;
   } catch (error) {
     console.error('Error refreshing access token:', error);
     throw new Error('Failed to refresh access token');
@@ -142,11 +143,24 @@ async function getAccessTokenAppOnly() {
   }
 }
 
-// Initialize Graph client
-async function getGraphClient(userAccessToken = null) {
+// Initialize Graph client with automatic token refresh
+async function getGraphClient(userAccessToken = null, sessionId = null) {
   let accessToken;
 
-  if (userAccessToken) {
+  // If sessionId is provided, use the token refresh middleware
+  if (sessionId) {
+    const { userTokenStore } = require('./auth');
+    const { refreshTokenIfNeeded } = require('./token-refresh-middleware');
+
+    try {
+      // Automatically refresh token if needed
+      accessToken = await refreshTokenIfNeeded(sessionId);
+      console.log(`✓ Using token for session: ${sessionId}`);
+    } catch (error) {
+      console.error(`❌ Token refresh failed for session ${sessionId}:`, error.message);
+      throw new Error('Authentication failed. Please log in again.');
+    }
+  } else if (userAccessToken) {
     accessToken = userAccessToken;
   } else if (process.env.MICROSOFT_ACCESS_TOKEN) {
     accessToken = process.env.MICROSOFT_ACCESS_TOKEN;
@@ -167,10 +181,27 @@ async function getGraphClient(userAccessToken = null) {
 }
 
 // Get sender's profile information
-async function getSenderProfile(userToken = null) {
+async function getSenderProfile(userToken = null, sessionId = null) {
   try {
-    const client = await getGraphClient(userToken);
+    console.log('🔍 [getSenderProfile] Starting profile fetch...');
+    console.log('🔍 [getSenderProfile] Input params:', {
+      hasUserToken: !!userToken,
+      sessionId: sessionId,
+      userTokenType: typeof userToken
+    });
+
+    const client = await getGraphClient(userToken, sessionId);
+    console.log('✅ [getSenderProfile] Graph client initialized successfully');
+
+    console.log('🔍 [getSenderProfile] Calling /me endpoint...');
     const user = await client.api('/me').get();
+
+    console.log('✅ [getSenderProfile] Profile fetched successfully:', {
+      displayName: user.displayName,
+      email: user.mail || user.userPrincipalName,
+      hasJobTitle: !!user.jobTitle,
+      hasDepartment: !!user.department
+    });
 
     return {
       displayName: user.displayName,
@@ -180,7 +211,39 @@ async function getSenderProfile(userToken = null) {
       officeLocation: user.officeLocation || ''
     };
   } catch (error) {
-    console.error('Error getting sender profile:', error);
+    console.error('❌ [getSenderProfile] ERROR getting sender profile:');
+    console.error('❌ [getSenderProfile] Error type:', error.constructor.name);
+    console.error('❌ [getSenderProfile] Error message:', error.message);
+    console.error('❌ [getSenderProfile] Error stack:', error.stack);
+
+    // Log detailed error information
+    if (error.statusCode) {
+      console.error('❌ [getSenderProfile] HTTP Status Code:', error.statusCode);
+    }
+    if (error.code) {
+      console.error('❌ [getSenderProfile] Error Code:', error.code);
+    }
+    if (error.body) {
+      console.error('❌ [getSenderProfile] Error Body:', JSON.stringify(error.body, null, 2));
+    }
+
+    // Check token store status
+    if (sessionId) {
+      const { userTokenStore } = require('./auth');
+      const hasSession = userTokenStore.has(sessionId);
+      console.error('❌ [getSenderProfile] Session exists in token store:', hasSession);
+      if (hasSession) {
+        const tokenData = userTokenStore.get(sessionId);
+        console.error('❌ [getSenderProfile] Token data available:', {
+          hasAccessToken: !!tokenData?.accessToken,
+          hasRefreshToken: !!tokenData?.refreshToken,
+          tokenLength: tokenData?.accessToken?.length || 0
+        });
+      }
+    }
+
+    console.error('⚠️ [getSenderProfile] Falling back to default "User" displayName');
+
     return {
       displayName: 'User',
       email: userEmail || 'sender@hoshodigital.com',
@@ -193,25 +256,46 @@ async function getSenderProfile(userToken = null) {
 
 /**
  * 🔍 Search for contact email by name from Graph API
+ * Enhanced with comprehensive diagnostic logging
  */
-async function searchContactEmail(name, userToken = null) {
+async function searchContactEmail(name, userToken = null, sessionId = null) {
   try {
-    console.log(`🔍 Searching for contact: "${name}"`);
-    const client = await getGraphClient(userToken);
+    console.log(`\n${'='.repeat(60)}`);
+    console.log(`🔍 CONTACT SEARCH DIAGNOSTIC`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`📝 Search term: "${name}"`);
+    console.log(`📝 Trimmed: "${name.trim()}"`);
+
+    const client = await getGraphClient(userToken, sessionId);
     const searchedName = name.trim();
+    const searchResults = {
+      personalContacts: { attempted: false, found: 0, error: null },
+      peopleApi: { attempted: false, found: 0, error: null },
+      orgDirectory: { attempted: false, found: 0, error: null }
+    };
 
     // Step 1: Search in user's personal contacts
     try {
-      console.log('  → Searching personal contacts...');
+      searchResults.personalContacts.attempted = true;
+      console.log(`\n📇 STEP 1: Personal Contacts`);
+      console.log(`  → Filter: startswith(displayName,'${searchedName}') or startswith(givenName,'${searchedName}') or startswith(surname,'${searchedName}')`);
+
       const contacts = await client
         .api('/me/contacts')
         .filter(`startswith(displayName,'${searchedName}') or startswith(givenName,'${searchedName}') or startswith(surname,'${searchedName}')`)
         .select('displayName,emailAddresses,givenName,surname')
-        .top(5)
+        .top(10)
         .get();
 
+      console.log(`  → Raw results: ${contacts.value?.length || 0} contacts`);
+      searchResults.personalContacts.found = contacts.value?.length || 0;
+
       if (contacts.value && contacts.value.length > 0) {
-        console.log(`  ✅ Found ${contacts.value.length} contact(s) in personal contacts`);
+        contacts.value.forEach((contact, idx) => {
+          console.log(`  ${idx + 1}. ${contact.displayName} (${contact.givenName} ${contact.surname})`);
+          console.log(`     Emails: ${contact.emailAddresses?.length || 0}`);
+        });
+
         const results = contacts.value
           .filter(contact => contact.emailAddresses && contact.emailAddresses.length > 0)
           .map(contact => ({
@@ -221,6 +305,9 @@ async function searchContactEmail(name, userToken = null) {
           }));
 
         if (results.length > 0) {
+          console.log(`  ✅ SUCCESS: Found ${results.length} valid contact(s)`);
+          console.log(`  📧 Selected: ${results[0].name} <${results[0].email}>`);
+          console.log(`${'='.repeat(60)}\n`);
           return {
             found: true,
             results: results,
@@ -228,21 +315,36 @@ async function searchContactEmail(name, userToken = null) {
           };
         }
       }
+      console.log(`  ⚠️ No valid contacts with email addresses`);
     } catch (err) {
-      console.log('  ⚠ Personal contacts search failed:', err.message);
+      searchResults.personalContacts.error = err.message;
+      console.log(`  ❌ ERROR: ${err.message}`);
+      if (err.statusCode) console.log(`  📊 Status Code: ${err.statusCode}`);
+      if (err.code) console.log(`  📊 Error Code: ${err.code}`);
     }
 
     // Step 2: Search in People API
     try {
-      console.log('  → Searching People API...');
+      searchResults.peopleApi.attempted = true;
+      console.log(`\n👥 STEP 2: People API`);
+      console.log(`  → Search query: "${searchedName}"`);
+
       const people = await client
         .api('/me/people')
         .search(`"${searchedName}"`)
         .select('displayName,emailAddresses,givenName,surname')
-        .top(5)
+        .top(10)
         .get();
 
+      console.log(`  → Raw results: ${people.value?.length || 0} people`);
+      searchResults.peopleApi.found = people.value?.length || 0;
+
       if (people.value && people.value.length > 0) {
+        people.value.forEach((person, idx) => {
+          console.log(`  ${idx + 1}. ${person.displayName} (${person.givenName} ${person.surname})`);
+          console.log(`     Emails: ${person.emailAddresses?.length || 0}`);
+        });
+
         const results = people.value
           .filter(person => person.emailAddresses && person.emailAddresses.length > 0)
           .map(person => ({
@@ -252,7 +354,9 @@ async function searchContactEmail(name, userToken = null) {
           }));
 
         if (results.length > 0) {
-          console.log(`  ✅ Found ${results.length} person(s) in People API`);
+          console.log(`  ✅ SUCCESS: Found ${results.length} valid person(s)`);
+          console.log(`  📧 Selected: ${results[0].name} <${results[0].email}>`);
+          console.log(`${'='.repeat(60)}\n`);
           return {
             found: true,
             results: results,
@@ -260,47 +364,139 @@ async function searchContactEmail(name, userToken = null) {
           };
         }
       }
+      console.log(`  ⚠️ No valid people with email addresses`);
     } catch (err) {
-      console.log('  ⚠ People API search failed:', err.message);
+      searchResults.peopleApi.error = err.message;
+      console.log(`  ❌ ERROR: ${err.message}`);
+      if (err.statusCode) console.log(`  📊 Status Code: ${err.statusCode}`);
+      if (err.code) console.log(`  📊 Error Code: ${err.code}`);
     }
 
-    // Step 3: Search in organization directory
+    // Step 3: Search in organization directory (with case-insensitive fallback)
     try {
-      console.log('  → Searching organization directory...');
+      searchResults.orgDirectory.attempted = true;
+      console.log(`\n🏢 STEP 3: Organization Directory`);
+      console.log(`  → Filter: startswith(displayName,'${searchedName}') or startswith(givenName,'${searchedName}') or startswith(surname,'${searchedName}')`);
+
       const users = await client
         .api('/users')
         .filter(`startswith(displayName,'${searchedName}') or startswith(givenName,'${searchedName}') or startswith(surname,'${searchedName}')`)
-        .select('displayName,mail,userPrincipalName,givenName,surname')
-        .top(5)
+        .select('displayName,mail,userPrincipalName,givenName,surname,id')
+        .top(10)
         .get();
 
+      console.log(`  → Raw results: ${users.value?.length || 0} users`);
+      searchResults.orgDirectory.found = users.value?.length || 0;
+
       if (users.value && users.value.length > 0) {
-        console.log(`  ✅ Found ${users.value.length} user(s) in organization`);
+        users.value.forEach((user, idx) => {
+          console.log(`  ${idx + 1}. ${user.displayName} (${user.givenName} ${user.surname})`);
+          console.log(`     Mail: ${user.mail || 'N/A'}`);
+          console.log(`     UPN: ${user.userPrincipalName || 'N/A'}`);
+          console.log(`     ID: ${user.id}`);
+        });
+
         const results = users.value.map(user => ({
           name: user.displayName,
           email: user.mail || user.userPrincipalName,
           source: 'organization_directory'
         }));
 
+        console.log(`  ✅ SUCCESS: Found ${results.length} user(s)`);
+        console.log(`  📧 Selected: ${results[0].name} <${results[0].email}>`);
+        console.log(`${'='.repeat(60)}\n`);
         return {
           found: true,
           results: results,
           searchedName: searchedName
         };
       }
+      console.log(`  ⚠️ No users found with exact startswith match`);
+
+      // FALLBACK: Try case-insensitive contains search
+      console.log(`\n  🔄 FALLBACK: Trying case-insensitive contains search...`);
+      const allUsers = await client
+        .api('/users')
+        .select('displayName,mail,userPrincipalName,givenName,surname,id')
+        .top(100)
+        .get();
+
+      console.log(`  → Retrieved ${allUsers.value?.length || 0} users for client-side filtering`);
+
+      const searchLower = searchedName.toLowerCase();
+      const matchedUsers = allUsers.value?.filter(user => {
+        const displayName = (user.displayName || '').toLowerCase();
+        const givenName = (user.givenName || '').toLowerCase();
+        const surname = (user.surname || '').toLowerCase();
+        return displayName.includes(searchLower) ||
+          givenName.includes(searchLower) ||
+          surname.includes(searchLower);
+      }) || [];
+
+      console.log(`  → Matched ${matchedUsers.length} users with contains filter`);
+
+      if (matchedUsers.length > 0) {
+        matchedUsers.forEach((user, idx) => {
+          console.log(`  ${idx + 1}. ${user.displayName} (${user.givenName} ${user.surname})`);
+          console.log(`     Mail: ${user.mail || 'N/A'}`);
+        });
+
+        const results = matchedUsers.map(user => ({
+          name: user.displayName,
+          email: user.mail || user.userPrincipalName,
+          source: 'organization_directory_fallback'
+        }));
+
+        console.log(`  ✅ FALLBACK SUCCESS: Found ${results.length} user(s)`);
+        console.log(`  📧 Selected: ${results[0].name} <${results[0].email}>`);
+        console.log(`${'='.repeat(60)}\n`);
+        return {
+          found: true,
+          results: results,
+          searchedName: searchedName
+        };
+      }
+
     } catch (err) {
-      console.log('  ⚠ Organization directory search failed:', err.message);
+      searchResults.orgDirectory.error = err.message;
+      console.log(`  ❌ ERROR: ${err.message}`);
+      if (err.statusCode) console.log(`  📊 Status Code: ${err.statusCode}`);
+      if (err.code) console.log(`  📊 Error Code: ${err.code}`);
     }
 
-    console.log(`  ❌ No contact found for: "${searchedName}"`);
+    // Final summary
+    console.log(`\n❌ SEARCH FAILED - SUMMARY`);
+    console.log(`${'='.repeat(60)}`);
+    console.log(`📝 Search term: "${searchedName}"`);
+    console.log(`\n📊 Results by source:`);
+    console.log(`  Personal Contacts: ${searchResults.personalContacts.attempted ? `${searchResults.personalContacts.found} found` : 'Not attempted'}`);
+    if (searchResults.personalContacts.error) console.log(`    Error: ${searchResults.personalContacts.error}`);
+    console.log(`  People API: ${searchResults.peopleApi.attempted ? `${searchResults.peopleApi.found} found` : 'Not attempted'}`);
+    if (searchResults.peopleApi.error) console.log(`    Error: ${searchResults.peopleApi.error}`);
+    console.log(`  Org Directory: ${searchResults.orgDirectory.attempted ? `${searchResults.orgDirectory.found} found` : 'Not attempted'}`);
+    if (searchResults.orgDirectory.error) console.log(`    Error: ${searchResults.orgDirectory.error}`);
+
+    console.log(`\n💡 Troubleshooting suggestions:`);
+    console.log(`  1. Verify the exact spelling of the name`);
+    console.log(`  2. Try using the full name (e.g., "Jatin Kumar")`);
+    console.log(`  3. Check if the user exists in your organization`);
+    console.log(`  4. Verify app permissions: User.Read.All, People.Read, Contacts.Read`);
+    console.log(`  5. Try providing the email address directly`);
+    console.log(`${'='.repeat(60)}\n`);
+
     return {
       found: false,
       searchedName: searchedName,
-      message: `No user found with name "${searchedName}". Please verify the name or provide the email address directly.`
+      message: `No user found with name "${searchedName}". Please verify the spelling or provide the email address directly.`,
+      diagnostics: searchResults
     };
 
   } catch (error) {
-    console.error('❌ Error in searchContactEmail:', error);
+    console.error(`\n❌ CRITICAL ERROR in searchContactEmail`);
+    console.error(`${'='.repeat(60)}`);
+    console.error(`Error: ${error.message}`);
+    console.error(`Stack: ${error.stack}`);
+    console.error(`${'='.repeat(60)}\n`);
     throw new Error(`Failed to search for contact "${name}": ${error.message}`);
   }
 }
@@ -376,25 +572,41 @@ async function searchEmails(query, userToken = null) {
   }
 }
 
-async function sendEmail(recipient_name, subject, body, ccRecipients = [], userToken = null) {
+async function sendEmail(recipient_name, subject, body, ccRecipients = [], userToken = null, validatedRecipientData = null) {
   try {
     console.log(`📧 Sending email to: ${recipient_name}`);
 
     const senderProfile = await getSenderProfile(userToken);
-    const searchResult = await searchContactEmail(recipient_name, userToken);
 
-    if (!searchResult.found) {
-      console.log(`  ❌ Recipient not found: ${recipient_name}`);
-      return {
-        success: false,
-        notFound: true,
-        searchedName: searchResult.searchedName,
-        message: searchResult.message
+    let recipient;
+
+    // ✅ OPTIMIZATION: Use cached validated data if available (skip API call)
+    if (validatedRecipientData && validatedRecipientData.recipientEmail) {
+      console.log(`  ⚡ Using cached recipient data (fast path)`);
+      recipient = {
+        name: validatedRecipientData.recipientName,
+        email: validatedRecipientData.recipientEmail,
+        source: validatedRecipientData.source || 'cached'
       };
+    } else {
+      // Fallback: Search for recipient (slow path)
+      console.log(`  🔍 Searching for recipient (slow path)`);
+      const searchResult = await searchContactEmail(recipient_name, userToken);
+
+      if (!searchResult.found) {
+        console.log(`  ❌ Recipient not found: ${recipient_name}`);
+        return {
+          success: false,
+          notFound: true,
+          searchedName: searchResult.searchedName,
+          message: searchResult.message
+        };
+      }
+
+      recipient = searchResult.results[0];
     }
 
-    const recipient = searchResult.results[0];
-    console.log(`  ✅ Found recipient: ${recipient.email} (source: ${recipient.source})`);
+    console.log(`  ✅ Recipient: ${recipient.email} (source: ${recipient.source})`);
 
     const nameParts = recipient_name.trim().split(/\s+/);
     const firstName = nameParts[0];
@@ -985,28 +1197,42 @@ async function getTeamChannels(teamId, userToken = null) {
   }
 }
 
-async function sendTeamsMessage(recipientName, message, userToken = null) {
+async function sendTeamsMessage(recipientName, message, userToken = null, validatedRecipientData = null) {
   try {
     console.log(`💬 Sending Teams message to: ${recipientName}`);
 
     if (!userToken) throw new Error('User token required for Teams messaging');
 
     const client = await getGraphClient(userToken);
-    const searchResult = await searchContactEmail(recipientName, userToken);
 
-    if (!searchResult.found) {
-      console.log(`   ❌ Recipient not found: ${recipientName}`);
-      return {
-        success: false,
-        notFound: true,
-        searchedName: searchResult.searchedName,
-        message: searchResult.message
-      };
+    let recipientEmail;
+    let recipientDisplayName;
+
+    // ✅ OPTIMIZATION: Use cached validated data if available (skip API call)
+    if (validatedRecipientData && validatedRecipientData.recipientEmail) {
+      console.log(`  ⚡ Using cached recipient data (fast path)`);
+      recipientEmail = validatedRecipientData.recipientEmail;
+      recipientDisplayName = validatedRecipientData.recipientName;
+    } else {
+      // Fallback: Search for recipient (slow path)
+      console.log(`  🔍 Searching for recipient (slow path)`);
+      const searchResult = await searchContactEmail(recipientName, userToken);
+
+      if (!searchResult.found) {
+        console.log(`   ❌ Recipient not found: ${recipientName}`);
+        return {
+          success: false,
+          notFound: true,
+          searchedName: searchResult.searchedName,
+          message: searchResult.message
+        };
+      }
+
+      recipientEmail = searchResult.results[0].email;
+      recipientDisplayName = searchResult.results[0].name;
     }
 
-    const recipientEmail = searchResult.results[0].email;
-    const recipientDisplayName = searchResult.results[0].name;
-    console.log(`   ✅ Found recipient email: ${recipientEmail}`);
+    console.log(`   ✅ Recipient email: ${recipientEmail}`);
 
     const users = await client
       .api('/users')
@@ -1147,7 +1373,7 @@ async function getTeamsMessages(chatId = null, count = 10, userToken = null) {
   }
 }
 
-async function deleteTeamsMessage(chatId = null, messageId = null, messageContent = null, userToken = null) {
+async function deleteTeamsMessage(chatId = null, messageId = null, messageContent = null, userToken = null, previewMode = false) {
   try {
     console.log(`🗑️ Attempting to delete Teams message...`);
 
@@ -1204,6 +1430,21 @@ async function deleteTeamsMessage(chatId = null, messageId = null, messageConten
             chatId = chat.id;
             messageId = targetMessage.id;
             console.log(`   ✅ Found message: "${targetMessage.body?.content?.substring(0, 50)}..."`);
+
+            // ✅ PREVIEW MODE: Return message details without deleting
+            if (previewMode) {
+              console.log('   👁️ Preview mode - not deleting yet');
+              return {
+                success: true,
+                messageToDelete: {
+                  chatId: chatId,
+                  messageId: messageId,
+                  content: targetMessage.body?.content || 'Message',
+                  sentDate: new Date(targetMessage.createdDateTime).toLocaleString()
+                }
+              };
+            }
+
             break;
           }
         } catch (chatError) {
@@ -1495,7 +1736,7 @@ async function deleteEmail(messageId, userToken = null) {
   }
 }
 
-async function deleteSentEmail(subject = null, recipientEmail = null, userToken = null) {
+async function deleteSentEmail(subject = null, recipientEmail = null, userToken = null, previewMode = false) {
   try {
     console.log(`🗑️ Searching for sent email to delete...`);
     console.log(`   Subject filter: ${subject || 'none'}, Recipient filter: ${recipientEmail || 'none'}`);
@@ -1571,6 +1812,21 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
     console.log(`      To: ${recipientsList}`);
     console.log(`      Sent: ${new Date(emailToDelete.sentDateTime).toLocaleString()}`);
     console.log(`      ID: ${emailToDelete.id}`);
+
+    // ✅ PREVIEW MODE: Return email details without deleting
+    if (previewMode) {
+      console.log('   👁️ Preview mode - not deleting yet');
+      return {
+        success: true,
+        emailToDelete: {
+          id: emailToDelete.id,
+          subject: emailToDelete.subject,
+          recipient: recipientsList,
+          sentDate: new Date(emailToDelete.sentDateTime).toLocaleString()
+        }
+      };
+    }
+
     console.log(`   🗑️ Deleting email...`);
 
     await client.api(`/me/messages/${emailToDelete.id}`).delete();
@@ -1598,9 +1854,9 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
 }
 
 // Get user profile photo
-async function getUserProfilePhoto(userToken = null) {
+async function getUserProfilePhoto(userToken = null, sessionId = null) {
   try {
-    const client = await getGraphClient(userToken);
+    const client = await getGraphClient(userToken, sessionId);
     console.log('🖼️ Calling Graph API for /me/photo/$value');
 
     const photoResponse = await client.api('/me/photo/$value').get();

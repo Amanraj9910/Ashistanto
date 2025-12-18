@@ -37,6 +37,13 @@
       const [selectedLanguage, setSelectedLanguage] = useState('en-US'); // Default: English US
       const [selectedAccent, setSelectedAccent] = useState('american'); // Default: American
       const [showLanguageMenu, setShowLanguageMenu] = useState(false);
+      const [silenceCountdown, setSilenceCountdown] = useState(0); // Countdown timer
+
+      // Silence detection refs
+      const silenceTimerRef = useRef(null);
+      const audioContextRef = useRef(null);
+      const analyserRef = useRef(null);
+      const countdownIntervalRef = useRef(null);
 
       // Action preview/confirmation state
       const [pendingAction, setPendingAction] = useState(null);
@@ -458,6 +465,74 @@
 
           streamRef.current = stream;
 
+          // ✅ Setup silence detection
+          const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          const analyser = audioContext.createAnalyser();
+          const microphone = audioContext.createMediaStreamSource(stream);
+          analyser.fftSize = 512;
+          microphone.connect(analyser);
+
+          audioContextRef.current = audioContext;
+          analyserRef.current = analyser;
+
+          // Monitor audio levels for silence detection
+          const bufferLength = analyser.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
+          let silenceStart = Date.now();
+          const SILENCE_THRESHOLD = 30; // Adjusted for background noise (was 15)
+          const SILENCE_DURATION = 2000; // 2 seconds
+
+          console.log('🎤 Silence detection started');
+          console.log(`   Threshold: ${SILENCE_THRESHOLD}`);
+          console.log(`   Duration: ${SILENCE_DURATION}ms`);
+
+          // Update countdown every 100ms
+          const updateCountdown = () => {
+            const elapsed = Date.now() - silenceStart;
+            const remaining = Math.max(0, SILENCE_DURATION - elapsed);
+            setSilenceCountdown(Math.ceil(remaining / 1000));
+          };
+
+          const checkSilence = () => {
+            if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== 'recording') {
+              console.log('🛑 Stopping silence check - recorder not active');
+              if (countdownIntervalRef.current) {
+                clearInterval(countdownIntervalRef.current);
+              }
+              return;
+            }
+
+            analyser.getByteFrequencyData(dataArray);
+            const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+            const now = Date.now();
+            const silenceDuration = now - silenceStart;
+
+            // Log every second
+            if (silenceDuration % 1000 < 50) {
+              console.log(`🎤 Level: ${average.toFixed(1)} | Silence: ${(silenceDuration / 1000).toFixed(1)}s`);
+            }
+
+            if (average < SILENCE_THRESHOLD) {
+              // Silence detected
+              if (silenceDuration > SILENCE_DURATION) {
+                console.log(`🔇 AUTO-STOP: ${(silenceDuration / 1000).toFixed(1)}s silence`);
+                console.log(`🛑 CALLING stopRecording() NOW!`);
+                if (countdownIntervalRef.current) {
+                  clearInterval(countdownIntervalRef.current);
+                }
+                stopRecording();
+                console.log(`✅ stopRecording() called successfully`);
+                return;
+              }
+            } else {
+              // Sound detected, reset timer
+              silenceStart = now;
+              console.log(`🔊 Sound detected (${average.toFixed(1)}) - timer reset`);
+            }
+
+            silenceTimerRef.current = requestAnimationFrame(checkSilence);
+          };
+
           let mimeType = 'audio/webm;codecs=opus';
           if (!MediaRecorder.isTypeSupported(mimeType)) {
             mimeType = 'audio/webm';
@@ -477,7 +552,37 @@
             }
           };
 
+          // ✅ START SILENCE DETECTION ONLY AFTER RECORDING STARTS
+          mediaRecorder.onstart = () => {
+            console.log('🎙️ Recording started - beginning silence detection');
+            silenceStart = Date.now(); // Reset timer when recording actually starts
+            checkSilence(); // Start monitoring
+            countdownIntervalRef.current = setInterval(updateCountdown, 100); // Start countdown
+          };
+
           mediaRecorder.onstop = async () => {
+            console.log('📍 MediaRecorder stopped');
+
+            // Cleanup silence detection first
+            if (silenceTimerRef.current) {
+              cancelAnimationFrame(silenceTimerRef.current);
+              silenceTimerRef.current = null;
+            }
+            if (countdownIntervalRef.current) {
+              clearInterval(countdownIntervalRef.current);
+              countdownIntervalRef.current = null;
+            }
+
+            // Close audio context after a small delay to avoid errors
+            setTimeout(() => {
+              if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+                audioContextRef.current.close().catch(err => {
+                  console.log('⚠️ AudioContext close warning (safe to ignore):', err.message);
+                });
+                audioContextRef.current = null;
+              }
+            }, 100);
+
             const audioBlob = new Blob(audioChunksRef.current, { type: mimeType });
 
             if (audioBlob.size < 1000) {
@@ -501,10 +606,24 @@
       };
 
       const stopRecording = () => {
-        if (mediaRecorderRef.current && isRecording) {
+        console.log('🛑 stopRecording called');
+        console.log(`   mediaRecorderRef.current exists: ${!!mediaRecorderRef.current}`);
+        console.log(`   mediaRecorderRef.current.state: ${mediaRecorderRef.current?.state}`);
+
+        // Check mediaRecorder state directly, not isRecording (which can be stale in closures)
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          console.log('   ✅ Stopping recorder...');
           mediaRecorderRef.current.stop();
           setIsRecording(false);
           setIsProcessing(true);
+          setSilenceCountdown(0);
+
+          // Cleanup countdown interval
+          if (countdownIntervalRef.current) {
+            clearInterval(countdownIntervalRef.current);
+          }
+        } else {
+          console.log('   ⚠️ Recorder not in recording state, cannot stop');
         }
       };
 
@@ -834,11 +953,8 @@
                   <button className="px-4 py-2 text-white bg-gradient-to-r from-red-500 to-red-600 rounded-lg font-medium hover:from-red-600 hover:to-red-700 transition">
                     Home
                   </button>
-                  <button className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition">
-                    Voice Processing
-                  </button>
-                  <button className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition">
-                    Text Chat
+                  <button className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition" href="#features" >
+                    Features
                   </button>
                   <button className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg font-medium transition">
                     About
@@ -921,14 +1037,6 @@
 
               {/* Quick Action Buttons */}
               <div className="flex flex-wrap justify-center gap-4">
-                <button
-                  onClick={isRecording ? stopRecording : startRecording}
-                  disabled={isProcessing || !isConfigured || !isLoggedIn}
-                  className="px-8 py-4 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-semibold text-lg hover:from-red-600 hover:to-red-700 transition flex items-center gap-3 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <span>{isRecording ? '⏹️' : '🎙️'}</span>
-                  {isRecording ? 'Stop' : 'Speak'}
-                </button>
                 <button className="px-8 py-4 bg-white text-gray-700 rounded-lg font-semibold text-lg hover:bg-gray-50 transition border-2 border-gray-200 flex items-center gap-2">
                   Learn More
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1074,12 +1182,13 @@
             </div>
           </div>
 
+
           {/* Main Content */}
           <div className="max-w-7xl mx-auto px-6 py-12">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               {/* Control Panel */}
               <div className="lg:col-span-1">
-                <div className="bg-white rounded-2xl border-2 border-gray-200 p-8 sticky top-6">
+                <div className="bg-white rounded-2xl border-2 border-gray-200 p-8 top-6 z-50">
                   <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
                     <span className="w-8 h-8 bg-gradient-to-br from-red-500 to-red-600 rounded-lg flex items-center justify-center text-white text-sm">
                       🎙️
@@ -1123,11 +1232,25 @@
                             : isSpeaking
                               ? '🔊 AI Speaking...'
                               : isRecording
-                                ? '🎙️ Listening...'
+                                ? '🎙️ Listening... (Click to stop)'
                                 : !isConfigured
                                   ? '⚙️ Not Configured'
                                   : '👆 Click to Speak'}
                       </p>
+                      {isRecording && (
+                        <>
+                          <p className="text-sm text-gray-500 mt-2 animate-pulse">
+                            Auto-stops after 2 seconds of silence
+                          </p>
+                          {silenceCountdown > 0 && (
+                            <div className="mt-2 px-4 py-2 bg-red-100 rounded-lg border-2 border-red-300">
+                              <p className="text-lg font-bold text-red-600">
+                                ⏱️ Auto-stop in: {silenceCountdown}s
+                              </p>
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
                   </div>
 
@@ -1155,7 +1278,7 @@
                 </div>
 
                 {/* Voice Accent Selector */}
-                <div className="bg-white rounded-2xl border-2 border-gray-200 p-6 mt-6 sticky top-96">
+                <div className="bg-white rounded-2xl border-2 border-gray-200 p-6 mt-6 ">
                   <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
                     <span className="text-xl">🌐</span>
                     Voice Accent
@@ -1268,19 +1391,31 @@
                   )}
 
                   <div className="p-6 border-t border-gray-200">
-                    <form onSubmit={handleTextSubmit} className="flex gap-3">
-                      <input
-                        type="text"
+                    <form onSubmit={handleTextSubmit} className="flex gap-3 items-end">
+                      <textarea
                         value={textInput}
-                        onChange={(e) => setTextInput(e.target.value)}
-                        placeholder="Type your message..."
+                        onChange={(e) => {
+                          setTextInput(e.target.value);
+                          // Auto-resize textarea
+                          e.target.style.height = 'auto';
+                          e.target.style.height = Math.min(e.target.scrollHeight, 200) + 'px';
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            handleTextSubmit(e);
+                          }
+                        }}
+                        placeholder="Type your message... (Shift+Enter for new line)"
                         disabled={isProcessing || !isConfigured || !isLoggedIn}
-                        className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-red-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                        rows={1}
+                        className="flex-1 px-4 py-3 border-2 border-gray-200 rounded-lg focus:outline-none focus:border-red-500 disabled:bg-gray-100 disabled:cursor-not-allowed resize-none overflow-y-auto"
+                        style={{ minHeight: '48px', maxHeight: '200px' }}
                       />
                       <button
                         type="submit"
                         disabled={isProcessing || !isConfigured || !isLoggedIn || !textInput.trim()}
-                        className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-medium hover:from-red-600 hover:to-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                        className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg font-medium hover:from-red-600 hover:to-red-700 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 flex-shrink-0"
                       >
                         {isProcessing ? (
                           <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">

@@ -45,6 +45,18 @@ const CONFIRMATION_CONFIG = {
     requiresConfirmation: true,
     editableFields: ['subject', 'attendeeNames', 'startTime', 'endTime'],
     displayFields: ['subject', 'attendeeNames', 'startTime', 'endTime', 'isTeamsMeeting']
+  },
+  delete_sent_email: {
+    title: '🗑️ Delete Email Confirmation',
+    requiresConfirmation: true,
+    editableFields: [],
+    displayFields: ['subject', 'recipient', 'sentDate', 'action']
+  },
+  delete_teams_message: {
+    title: '🗑️ Delete Teams Message Confirmation',
+    requiresConfirmation: true,
+    editableFields: [],
+    displayFields: ['messageContent', 'sentDate', 'action']
   }
 };
 
@@ -53,9 +65,10 @@ const CONFIRMATION_CONFIG = {
  * 
  * @param {String} actionType - Type of action (send_email, send_teams_message, etc.)
  * @param {Object} actionData - Data for the action
+ * @param {Object} validatedRecipientData - Optional pre-validated recipient data to cache
  * @returns {Object} Preview object with unique actionId
  */
-function createActionPreview(actionType, actionData) {
+function createActionPreview(actionType, actionData, validatedRecipientData = null) {
   // Validate action type
   if (!CONFIRMATION_CONFIG[actionType]) {
     throw new Error(`Unknown action type: ${actionType}`);
@@ -80,10 +93,14 @@ function createActionPreview(actionType, actionData) {
   pendingActionsStore.set(actionId, {
     ...preview,
     originalData: actionData, // Keep original for reference
-    editedData: null
+    editedData: null,
+    validatedRecipientData: validatedRecipientData // Cache validated recipient data for fast execution
   });
 
   console.log(`✓ Action preview created: ${actionId} (${actionType})`);
+  if (validatedRecipientData) {
+    console.log(`  ✓ Cached validated recipient data for fast execution`);
+  }
 
   return formatPreviewForDisplay(preview);
 }
@@ -268,6 +285,39 @@ function formatPreviewForDisplay(preview) {
         },
         editable: preview.editableFields,
         status: preview.status
+      };
+
+    case 'delete_sent_email':
+      return {
+        actionId: preview.actionId,
+        title: preview.title,
+        type: 'delete_email',
+        details: {
+          subject: preview.data.subject || 'Unknown subject',
+          recipient: preview.data.recipient || 'Unknown recipient',
+          sentDate: preview.data.sentDate || 'Unknown date',
+          action: 'Delete this email',
+          preview: `Delete email: "${preview.data.subject}"`
+        },
+        editable: preview.editableFields,
+        status: preview.status,
+        isDeletion: true
+      };
+
+    case 'delete_teams_message':
+      return {
+        actionId: preview.actionId,
+        title: preview.title,
+        type: 'delete_teams',
+        details: {
+          messageContent: preview.data.messageContent || 'Recent message',
+          sentDate: preview.data.sentDate || 'Recently',
+          action: 'Delete this Teams message',
+          preview: `Delete Teams message: "${preview.data.messageContent?.substring(0, 50)}..."`
+        },
+        editable: preview.editableFields,
+        status: preview.status,
+        isDeletion: true
       };
 
     default:
