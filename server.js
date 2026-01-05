@@ -863,10 +863,12 @@ app.post('/api/confirm-action', async (req, res) => {
     }
 
     // Check session
-    const userToken = userTokenStore.get(sessionId);
-    if (!userToken) {
+    // Check session
+    const tokenData = userTokenStore.get(sessionId);
+    if (!tokenData) {
       return res.status(401).json({ error: 'Invalid or expired session' });
     }
+    const userToken = tokenData.accessToken;
 
     // Import action preview and agent tools modules
     const { actionPreview, executeTool } = require('./agent-tools');
