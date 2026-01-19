@@ -85,7 +85,8 @@ async function getAccessTokenByAuthCode(code) {
         'User.Read',
         'Contacts.Read',
         'OnlineMeetings.ReadWrite',
-        'Chat.ReadWrite'
+        'Chat.ReadWrite',
+        'offline_access'  // ✅ CRITICAL: Required to get refresh token
       ],
       redirectUri: redirectUri,
       codeVerifier: undefined
@@ -152,7 +153,7 @@ async function getGraphClient(userAccessToken = null, sessionId = null) {
     const { userTokenStore } = require('./auth');
     // Use direct token retrieval to avoid circular dependency
     const tokenData = userTokenStore.get(sessionId);
-    
+
     if (!tokenData) {
       throw new Error('Session not found. Please log in again.');
     }
