@@ -437,6 +437,13 @@ async function queryAgent(text, conversationHistory = [], sessionId = 'default',
       throw new Error('Azure OpenAI credentials not configured in .env file');
     }
 
+    // ✅ FIX: Retrieve user token from userTokenStore if not provided
+    if (!userToken && sessionId && userTokenStore.has(sessionId)) {
+      const tokenData = userTokenStore.get(sessionId);
+      userToken = tokenData.accessToken;
+      console.log('  → Retrieved user token from session store');
+    }
+
     console.log('  → Sending request to Azure OpenAI...');
     console.log('  → Conversation history length:', conversationHistory.length);
     console.log('  → User token available:', !!userToken);

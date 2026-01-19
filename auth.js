@@ -62,6 +62,8 @@ router.get('/callback', async (req, res) => {
 
     console.log('✅ User logged in:', loggedInUser.email);
     console.log('📌 Session ID:', sessionId);
+    console.log('🔑 Refresh token received:', !!tokens.refreshToken);
+    console.log('⏰ Token expires at:', new Date(Date.now() + ((tokens.expiresIn || 3600) * 1000)).toISOString());
 
     res.redirect(`/auth/success?sessionId=${sessionId}`);
   } catch (err) {
