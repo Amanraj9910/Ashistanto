@@ -1,142 +1,63 @@
-# ============================================================================
-# Azure Voice AI - Build, Push to ACR, and Deploy to App Service
-# ============================================================================
-# This workflow:
-# 1. Builds a Docker image with FFmpeg
-# 2. Pushes it to Azure Container Registry (ACR)
-# 3. Updates Azure App Service to use the new image
-#
-# Required GitHub Secrets:
-#   - ACR_USERNAME: Azure Container Registry username
-#   - ACR_PASSWORD: Azure Container Registry password
-#   - AZURE_CREDENTIALS: Azure service principal JSON (for az login)
-#   - AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_KEY, AZURE_OPENAI_DEPLOYMENT
-#   - AZURE_SPEECH_KEY, AZURE_SPEECH_REGION
-#   - MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_TENANT_ID
-#   - MICROSOFT_USER_EMAIL, REDIRECT_URI
-# ============================================================================
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and Deploy to Azure
+name: Build and deploy container app to Azure Web App - Ashistanto
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:  # Manual trigger
-
-env:
-  ACR_SERVER: ashistanto.azurecr.io
-  ACR_NAME: Ashistanto
-  IMAGE_NAME: azure-voice-ai
-  RESOURCE_GROUP: AI-102
-  APP_NAME: ashistanto
+  workflow_dispatch:
 
 jobs:
-  # ==========================================================================
-  # Job 1: Build Docker image and push to ACR
-  # ==========================================================================
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: read #This is required for actions/checkout
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v2
 
-      - name: Login to Azure Container Registry
-        uses: docker/login-action@v3
+      - name: Log in to container registry
+        uses: docker/login-action@v2
         with:
-          registry: ${{ env.ACR_SERVER }}
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          registry: ashistanto.azurecr.io/
+          username: ${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_C8691C70F7FB4597944189AF581ABAFD }}
+          password: ${{ secrets.AZUREAPPSERVICE_CONTAINERPASSWORD_A9B3385B692946FFBDD22342A1536B02 }}
 
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+      - name: Build and push container image to registry
+        uses: docker/build-push-action@v3
         with:
           context: .
-          file: ./Dockerfile
           push: true
-          tags: |
-            ${{ env.ACR_SERVER }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.ACR_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: ashistanto.azurecr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_C8691C70F7FB4597944189AF581ABAFD }}/azure-voice-ai:${{ github.sha }}
+          file: ./Dockerfile
 
-      - name: Verify image push
-        run: |
-          echo "✅ Image pushed: ${{ env.ACR_SERVER }}/${{ env.IMAGE_NAME }}:latest"
-          echo "✅ Image pushed: ${{ env.ACR_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
-
-  # ==========================================================================
-  # Job 2: Deploy to Azure App Service
-  # ==========================================================================
   deploy:
     runs-on: ubuntu-latest
-    needs: build-and-push
     permissions:
-      id-token: write
-      contents: read
+      id-token: write #This is required for requesting the JWT
+      contents: read #This is required for actions/checkout
 
+    needs: build
+    
     steps:
+      
       - name: Login to Azure
         uses: azure/login@v2
         with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_BFEC75707FBD45EB8A326B20B031938B }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_DBE2BAFF682E47FDB4612C7524097EFE }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_B7E3273EECEC459AAEE9FFA593CE8DCE }}
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4853B3DB6BE84BC68CB1125283BA6FC3 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_BCC948E5C0064776A677864F14E44A2A }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_43903ED81067487DA178D06090D25330 }}
 
-      - name: Configure App Service to use ACR image
-        uses: azure/CLI@v2
+      - name: Deploy to Azure Web App
+        id: deploy-to-webapp
+        uses: azure/webapps-deploy@v2
         with:
-          azcliversion: latest
-          inlineScript: |
-            # Set container settings
-            az webapp config container set \
-              --resource-group '${{ env.RESOURCE_GROUP }}' \
-              --name '${{ env.APP_NAME }}' \
-              --docker-custom-image-name '${{ env.ACR_SERVER }}/${{ env.IMAGE_NAME }}:latest' \
-              --docker-registry-server-url 'https://${{ env.ACR_SERVER }}' \
-              --docker-registry-server-user '${{ secrets.ACR_USERNAME }}' \
-              --docker-registry-server-password '${{ secrets.ACR_PASSWORD }}'
-
-            echo "✅ App Service configured to use new container image"
-
-      - name: Set App Service environment variables
-        uses: azure/CLI@v2
-        with:
-          azcliversion: latest
-          inlineScript: |
-            az webapp config appsettings set \
-              --resource-group '${{ env.RESOURCE_GROUP }}' \
-              --name '${{ env.APP_NAME }}' \
-              --settings \
-                NODE_ENV="production" \
-                WEBSITES_PORT="3000" \
-                AZURE_OPENAI_ENDPOINT="${{ secrets.AZURE_OPENAI_ENDPOINT }}" \
-                AZURE_OPENAI_KEY="${{ secrets.AZURE_OPENAI_KEY }}" \
-                AZURE_OPENAI_DEPLOYMENT="${{ secrets.AZURE_OPENAI_DEPLOYMENT }}" \
-                AZURE_SPEECH_KEY="${{ secrets.AZURE_SPEECH_KEY }}" \
-                AZURE_SPEECH_REGION="${{ secrets.AZURE_SPEECH_REGION }}" \
-                MICROSOFT_CLIENT_ID="${{ secrets.MICROSOFT_CLIENT_ID }}" \
-                MICROSOFT_CLIENT_SECRET="${{ secrets.MICROSOFT_CLIENT_SECRET }}" \
-                MICROSOFT_TENANT_ID="${{ secrets.MICROSOFT_TENANT_ID }}" \
-                MICROSOFT_USER_EMAIL="${{ secrets.MICROSOFT_USER_EMAIL }}" \
-                REDIRECT_URI="${{ secrets.REDIRECT_URI }}"
-
-            echo "✅ Environment variables configured"
-
-      - name: Restart App Service
-        uses: azure/CLI@v2
-        with:
-          azcliversion: latest
-          inlineScript: |
-            az webapp restart \
-              --resource-group '${{ env.RESOURCE_GROUP }}' \
-              --name '${{ env.APP_NAME }}'
-
-            echo "✅ App Service restarted"
-            echo "🌐 App URL: https://${{ env.APP_NAME }}.azurewebsites.net"
+          app-name: 'Ashistanto'
+          slot-name: 'Production'
+          images: 'ashistanto.azurecr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_C8691C70F7FB4597944189AF581ABAFD }}/azure-voice-ai:${{ github.sha }}'
+          
