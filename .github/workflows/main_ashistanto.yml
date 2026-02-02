@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
@@ -24,7 +24,7 @@ jobs:
       - name: Log in to container registry
         uses: docker/login-action@v2
         with:
-          registry: ashistanto.azurecr.io/
+          registry: ashistanto.azurecr.io
           username: ${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_C8691C70F7FB4597944189AF581ABAFD }}
           password: ${{ secrets.AZUREAPPSERVICE_CONTAINERPASSWORD_A9B3385B692946FFBDD22342A1536B02 }}
 
@@ -39,13 +39,11 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
-
+      id-token: write
+      contents: read
     needs: build
     
     steps:
-      
       - name: Login to Azure
         uses: azure/login@v2
         with:
@@ -54,10 +52,8 @@ jobs:
           subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_43903ED81067487DA178D06090D25330 }}
 
       - name: Deploy to Azure Web App
-        id: deploy-to-webapp
-        uses: azure/webapps-deploy@v2
+        uses: azure/webapps-deploy@v3
         with:
           app-name: 'Ashistanto'
           slot-name: 'Production'
           images: 'ashistanto.azurecr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_C8691C70F7FB4597944189AF581ABAFD }}/azure-voice-ai:${{ github.sha }}'
-          
