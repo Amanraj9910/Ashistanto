@@ -18,7 +18,7 @@ on:
 env:
   ACR_REGISTRY: ashistanto.azurecr.io
   IMAGE_NAME: azure-voice-ai
-  APP_NAME: Ashistanto
+  APP_NAME: ashistanto-bhc0fpeugkd9fqft
   RESOURCE_GROUP: AI-102
 
 permissions:
@@ -153,7 +153,7 @@ jobs:
           RETRY_COUNT=0
           
           while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
-            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://ashistanto.azurewebsites.net/api/config || echo "000")
+            HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://ashistanto.com/api/config || echo "000")
             
             if [ "$HTTP_STATUS" = "200" ]; then
               echo "✅ Health check passed! Status: $HTTP_STATUS"
@@ -179,7 +179,7 @@ jobs:
           echo "|----------|-------|" >> $GITHUB_STEP_SUMMARY
           echo "| App Service | \`${{ env.APP_NAME }}\` |" >> $GITHUB_STEP_SUMMARY
           echo "| Image | \`${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}\` |" >> $GITHUB_STEP_SUMMARY
-          echo "| URL | https://ashistanto.azurewebsites.net |" >> $GITHUB_STEP_SUMMARY
+          echo "| URL | https://ashistanto.com |" >> $GITHUB_STEP_SUMMARY
           echo "| Health Check | ${{ steps.health_check.outputs.status || 'pending' }} |" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "---" >> $GITHUB_STEP_SUMMARY
@@ -199,7 +199,7 @@ jobs:
         run: |
           if [ "${{ needs.deploy.result }}" = "success" ]; then
             echo "✅ Deployment completed successfully!"
-            echo "🌐 Application URL: https://ashistanto.azurewebsites.net"
+            echo "🌐 Application URL: https://ashistanto.com"
           else
             echo "❌ Deployment failed or was cancelled"
             echo "🔍 Check the workflow logs for details"
