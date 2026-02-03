@@ -112,9 +112,9 @@ jobs:
     name: 🚀 Deploy to Production
     runs-on: ubuntu-latest
     needs: build
-    environment:
-      name: production
-      url: https://ashistanto.azurewebsites.net
+    # Note: Removed 'environment' block to use branch-based OIDC subject
+    # If you want environment protection rules, add a federated credential for:
+    # subject: repo:Amanraj9910/Ashistanto:environment:production
 
     steps:
       - name: 🔐 Azure Login (OIDC)
