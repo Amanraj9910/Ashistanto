@@ -1,13 +1,27 @@
+# ============================================================================
+# DEPRECATED: This workflow has been replaced by azure-deploy.yml
+# The new workflow uses OIDC authentication for enhanced security.
+# Keeping this file for reference. Remove after confirming new pipeline works.
+# ============================================================================
+
 # Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
 # More GitHub Actions for Azure: https://github.com/Azure/actions
 
-name: Build and deploy container app to Azure Web App - Ashistanto
+name: "[DEPRECATED] Build and deploy container app to Azure Web App - Ashistanto"
+
+# Disabled - using azure-deploy.yml instead
+# on:
+#   push:
+#     branches:
+#       - main
+#   workflow_dispatch:
 
 on:
-  push:
-    branches:
-      - main
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "confirm" to run this deprecated workflow'
+        required: true
 
 jobs:
   build:
@@ -38,22 +52,13 @@ jobs:
 
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      contents: read
     needs: build
     
     steps:
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_4853B3DB6BE84BC68CB1125283BA6FC3 }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_BCC948E5C0064776A677864F14E44A2A }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_43903ED81067487DA178D06090D25330 }}
-
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v3
         with:
           app-name: 'Ashistanto'
           slot-name: 'Production'
+          publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
           images: 'ashistanto.azurecr.io/${{ secrets.AZUREAPPSERVICE_CONTAINERUSERNAME_C8691C70F7FB4597944189AF581ABAFD }}/azure-voice-ai:${{ github.sha }}'
