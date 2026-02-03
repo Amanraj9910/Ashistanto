@@ -50,17 +50,21 @@ USER node
 # Expose port
 EXPOSE 3000
 
+# Build arguments for versioning
+ARG BUILD_DATE
+ARG VCS_REF
+ARG VERSION
+
+# Labels for image metadata
+LABEL org.opencontainers.image.created="${BUILD_DATE}" \
+      org.opencontainers.image.revision="${VCS_REF}" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.title="Azure Voice AI Agent" \
+      org.opencontainers.image.description="Voice-based AI agent using Azure Speech Services and Azure OpenAI"
+
 # Set environment variables
 ENV NODE_ENV=production
 ENV PORT=3000
-ENV DOCKER_ENV=true
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/api/config || exit 1
-
-# Start application
-CMD ["node", "server.js"]
 ENV DOCKER_ENV=true
 
 # Health check
