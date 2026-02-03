@@ -129,12 +129,14 @@ jobs:
 
       - name: 📦 Configure App Service for Container
         run: |
-          # Ensure App Service is configured for container deployment
+          # Configure App Service with container image and ACR credentials
           az webapp config container set \
             --name ${{ env.APP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
             --container-image-name ${{ env.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-            --container-registry-url https://${{ env.ACR_REGISTRY }}
+            --container-registry-url https://${{ env.ACR_REGISTRY }} \
+            --container-registry-user ${{ secrets.ACR_USERNAME }} \
+            --container-registry-password ${{ secrets.ACR_PASSWORD }}
 
       - name: 🚀 Deploy Container to App Service
         uses: azure/webapps-deploy@v3
