@@ -18,8 +18,8 @@ on:
 env:
   ACR_REGISTRY: ashistanto.azurecr.io
   IMAGE_NAME: azure-voice-ai
-  APP_NAME: ashistanto-bhc0fpeugkd9fqft
-  RESOURCE_GROUP: AI-102
+  APP_NAME: Ashistanto
+  RESOURCE_GROUP: ai-102
 
 permissions:
   id-token: write  # Required for OIDC
