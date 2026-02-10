@@ -7,16 +7,23 @@ const timezoneHelper = require('./timezone-helper');
 // Get user email from environment variable
 const userEmail = process.env.MICROSOFT_USER_EMAIL;
 
-// Initialize MSAL for authentication
-function initMsalClient() {
-  const config = {
-    auth: {
-      clientId: process.env.MICROSOFT_CLIENT_ID,
-      authority: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}`,
-      clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
-    }
-  };
-  return new ConfidentialClientApplication(config);
+// Initialize MSAL as a SINGLETON so the internal token cache persists
+// This is CRITICAL for token refresh - MSAL stores refresh tokens in its cache
+let _msalClientInstance = null;
+
+function getMsalClient() {
+  if (!_msalClientInstance) {
+    const config = {
+      auth: {
+        clientId: process.env.MICROSOFT_CLIENT_ID,
+        authority: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}`,
+        clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+      }
+    };
+    _msalClientInstance = new ConfidentialClientApplication(config);
+    console.log('✅ MSAL client initialized (singleton)');
+  }
+  return _msalClientInstance;
 }
 
 // Get authorization URL for user login
@@ -59,9 +66,10 @@ async function getAuthUrl() {
 }
 
 // Get access token using authorization code (delegated flow)
+// Uses singleton MSAL client so the refresh token is cached internally
 async function getAccessTokenByAuthCode(code) {
   try {
-    const msalClient = initMsalClient();
+    const msalClient = getMsalClient();
 
     let redirectUri;
     if (process.env.REDIRECT_URI) {
@@ -93,6 +101,8 @@ async function getAccessTokenByAuthCode(code) {
     };
 
     const response = await msalClient.acquireTokenByCode(tokenRequest);
+    console.log('✅ Token acquired via auth code. Account:', response.account?.username);
+    console.log('🔑 MSAL token cache now contains refresh token for silent renewal');
     return response;
   } catch (error) {
     console.error('Error getting access token by auth code:', error);
@@ -100,10 +110,47 @@ async function getAccessTokenByAuthCode(code) {
   }
 }
 
-// Get access token using refresh token (delegated flow)
-async function getAccessTokenByRefreshToken(refreshToken) {
+// Silently refresh access token using MSAL's internal token cache
+// MSAL stores the refresh token internally after acquireTokenByCode
+// acquireTokenSilent uses that cached refresh token automatically
+async function refreshTokenSilently(account) {
   try {
-    const msalClient = initMsalClient();
+    const msalClient = getMsalClient();
+    const tokenRequest = {
+      account: account,
+      scopes: [
+        'Mail.ReadWrite',
+        'Mail.Send',
+        'Calendars.ReadWrite',
+        'Files.ReadWrite',
+        'Sites.Read.All',
+        'User.Read',
+        'Contacts.Read',
+        'OnlineMeetings.ReadWrite',
+        'Chat.ReadWrite',
+        'offline_access'
+      ],
+      forceRefresh: false  // Only refresh if needed
+    };
+
+    console.log('🔄 Attempting silent token refresh for:', account?.username);
+    const response = await msalClient.acquireTokenSilent(tokenRequest);
+    console.log('✅ Silent token refresh succeeded');
+    return response;
+  } catch (error) {
+    console.error('❌ Silent token refresh failed:', error.message);
+    throw new Error('Token refresh failed. Please log in again.');
+  }
+}
+
+// Legacy function kept for compatibility but uses silent refresh internally
+async function getAccessTokenByRefreshToken(refreshToken, account) {
+  if (account) {
+    return refreshTokenSilently(account);
+  }
+  // Fallback: try using acquireTokenByRefreshToken directly
+  try {
+    const msalClient = getMsalClient();
     const tokenRequest = {
       refreshToken: refreshToken,
       scopes: [
@@ -120,7 +167,6 @@ async function getAccessTokenByRefreshToken(refreshToken) {
     };
 
     const response = await msalClient.acquireTokenByRefreshToken(tokenRequest);
-    // Return full response object including accessToken, expiresIn, etc.
     return response;
   } catch (error) {
     console.error('Error refreshing access token:', error);
@@ -131,7 +177,7 @@ async function getAccessTokenByRefreshToken(refreshToken) {
 // Get access token using client credentials flow (fallback)
 async function getAccessTokenAppOnly() {
   try {
-    const msalClient = initMsalClient();
+    const msalClient = getMsalClient();
     const tokenRequest = {
       scopes: ['https://graph.microsoft.com/.default']
     };
@@ -144,14 +190,13 @@ async function getAccessTokenAppOnly() {
   }
 }
 
-// Initialize Graph client with automatic token refresh
+// Initialize Graph client with automatic token refresh via MSAL silent flow
 async function getGraphClient(userAccessToken = null, sessionId = null) {
   let accessToken;
 
-  // If sessionId is provided, use the token refresh middleware
+  // If sessionId is provided, use MSAL's silent token refresh
   if (sessionId) {
     const { userTokenStore } = require('./auth');
-    // Use direct token retrieval to avoid circular dependency
     const tokenData = userTokenStore.get(sessionId);
 
     if (!tokenData) {
@@ -162,27 +207,33 @@ async function getGraphClient(userAccessToken = null, sessionId = null) {
     const timeUntilExpiry = (tokenData.expiresAt || 0) - Date.now();
     const REFRESH_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
-    if (timeUntilExpiry < REFRESH_THRESHOLD && tokenData.refreshToken) {
+    if (timeUntilExpiry < REFRESH_THRESHOLD) {
       try {
-        // Refresh token if needed
-        const newTokenResponse = await getAccessTokenByRefreshToken(tokenData.refreshToken);
-        const updatedTokenData = {
-          accessToken: newTokenResponse.accessToken || newTokenResponse,
-          refreshToken: newTokenResponse.refreshToken || tokenData.refreshToken,
-          expiresAt: Date.now() + ((newTokenResponse.expiresIn || 3600) * 1000),
-          email: tokenData.email
-        };
-        userTokenStore.set(sessionId, updatedTokenData);
-        accessToken = updatedTokenData.accessToken;
-        console.log(`✅ Token refreshed for session: ${sessionId}`);
+        // Use MSAL's silent refresh with stored account object
+        if (tokenData.account) {
+          const newTokenResponse = await refreshTokenSilently(tokenData.account);
+          const updatedTokenData = {
+            ...tokenData,
+            accessToken: newTokenResponse.accessToken,
+            account: newTokenResponse.account || tokenData.account,
+            expiresAt: Date.now() + ((newTokenResponse.expiresIn || 3600) * 1000),
+          };
+          userTokenStore.set(sessionId, updatedTokenData);
+          accessToken = updatedTokenData.accessToken;
+          console.log(`✅ Token refreshed silently for session: ${sessionId}`);
+        } else {
+          // No account object stored — can't silently refresh, use expired token as last resort
+          console.warn(`⚠️ No MSAL account stored for session ${sessionId}, token may be expired`);
+          accessToken = tokenData.accessToken;
+        }
       } catch (error) {
-        console.error(`❌ Token refresh failed for session ${sessionId}:`, error.message);
-        userTokenStore.delete(sessionId);
-        throw new Error('Token refresh failed. Please log in again.');
+        console.error(`❌ Silent token refresh failed for session ${sessionId}:`, error.message);
+        // Don't delete session — let the user see a proper error
+        accessToken = tokenData.accessToken;
       }
     } else {
       accessToken = tokenData.accessToken;
-      console.log(`✓ Using token for session: ${sessionId}`);
+      console.log(`✓ Using valid token for session: ${sessionId}`);
     }
   } else if (userAccessToken) {
     accessToken = userAccessToken;
@@ -260,7 +311,7 @@ async function getSenderProfile(userToken = null, sessionId = null) {
         const tokenData = userTokenStore.get(sessionId);
         console.error('❌ [getSenderProfile] Token data available:', {
           hasAccessToken: !!tokenData?.accessToken,
-          hasRefreshToken: !!tokenData?.refreshToken,
+          hasAccount: !!tokenData?.account,
           tokenLength: tokenData?.accessToken?.length || 0
         });
       }
@@ -1960,6 +2011,7 @@ module.exports = {
   getAuthUrl,
   getAccessTokenByAuthCode,
   getAccessTokenByRefreshToken,
+  refreshTokenSilently,
   getAccessTokenAppOnly,
   getGraphClient,
   getRecentEmails,

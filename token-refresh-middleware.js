@@ -43,18 +43,21 @@ async function refreshTokenIfNeeded(sessionId) {
     console.log(`🔄 Refreshing token for session: ${sessionId}`);
 
     try {
-        // Lazy import to avoid circular dependency
-        const { getAccessTokenByRefreshToken } = require('./graph-tools');
-        
-        // Get new access token using refresh token
-        const newTokenResponse = await getAccessTokenByRefreshToken(tokenData.refreshToken);
+        // Use MSAL's silent refresh via the account object
+        const { refreshTokenSilently } = require('./graph-tools');
+
+        if (!tokenData.account) {
+            throw new Error('No MSAL account stored for this session');
+        }
+
+        const newTokenResponse = await refreshTokenSilently(tokenData.account);
 
         // Update token store with new tokens
         const updatedTokenData = {
-            accessToken: newTokenResponse.accessToken || newTokenResponse,
-            refreshToken: newTokenResponse.refreshToken || tokenData.refreshToken, // Keep old refresh token if new one not provided
+            ...tokenData,
+            accessToken: newTokenResponse.accessToken,
+            account: newTokenResponse.account || tokenData.account,
             expiresAt: Date.now() + ((newTokenResponse.expiresIn || 3600) * 1000),
-            email: tokenData.email
         };
 
         userTokenStore.set(sessionId, updatedTokenData);
