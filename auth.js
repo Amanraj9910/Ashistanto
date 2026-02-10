@@ -48,21 +48,23 @@ router.get('/callback', async (req, res) => {
     loggedInUser = {
       sessionId: sessionId,
       accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      account: tokens.account, // Store MSAL account for silent token refresh
       email: tokens.account.username
     };
 
-    // Store tokens with expiration metadata for automatic refresh
+    // Store tokens with expiration metadata and MSAL account for automatic silent refresh
+    // Note: MSAL manages refresh tokens internally in its cache - we don't need to store them
+    // We store the `account` object which is required by acquireTokenSilent()
     userTokenStore.set(sessionId, {
       accessToken: tokens.accessToken,
-      refreshToken: tokens.refreshToken,
+      account: tokens.account,  // CRITICAL: needed for acquireTokenSilent
       expiresAt: Date.now() + ((tokens.expiresIn || 3600) * 1000), // Default 1 hour if not provided
       email: tokens.account.username
     });
 
     console.log('✅ User logged in:', loggedInUser.email);
     console.log('📌 Session ID:', sessionId);
-    console.log('🔑 Refresh token received:', !!tokens.refreshToken);
+    console.log('🔑 MSAL account stored for silent refresh:', !!tokens.account);
     console.log('⏰ Token expires at:', new Date(Date.now() + ((tokens.expiresIn || 3600) * 1000)).toISOString());
 
     res.redirect(`/auth/success?sessionId=${sessionId}`);
