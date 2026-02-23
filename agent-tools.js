@@ -102,6 +102,31 @@ const tools = [
   {
     type: 'function',
     function: {
+      name: 'update_calendar_event',
+      description: 'Update an existing calendar event/meeting. Finds it by subject, then edits it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          subject: {
+            type: 'string',
+            description: 'The current subject/title of the meeting to find it'
+          },
+          new_subject: { type: 'string', description: 'New subject for the meeting (optional)' },
+          new_start_time: { type: 'string', description: 'New start time in ISO format (optional)' },
+          new_end_time: { type: 'string', description: 'New end time in ISO format (optional)' },
+          add_attendees: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'List of names or emails to ADD as attendees (optional)'
+          }
+        },
+        required: ['subject']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'send_teams_message',
       description: 'send Teams message.',
       parameters: {
@@ -149,6 +174,31 @@ const tools = [
       parameters: {
         type: 'object',
         properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'update_calendar_event',
+      description: 'Update an existing calendar event/meeting. Finds it by subject, then edits it.',
+      parameters: {
+        type: 'object',
+        properties: {
+          subject: {
+            type: 'string',
+            description: 'The current subject/title of the meeting to find it'
+          },
+          new_subject: { type: 'string', description: 'New subject for the meeting (optional)' },
+          new_start_time: { type: 'string', description: 'New start time in ISO format (optional)' },
+          new_end_time: { type: 'string', description: 'New end time in ISO format (optional)' },
+          add_attendees: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'List of names or emails to ADD as attendees (optional)'
+          }
+        },
+        required: ['subject']
       }
     }
   },
@@ -264,6 +314,7 @@ const functionMap = {
   send_email: graphTools.sendEmail,
   get_calendar_events: graphTools.getCalendarEvents,
   create_calendar_event: graphTools.createCalendarEvent,
+  update_calendar_event: graphTools.updateCalendarEvent,
   get_recent_files: graphTools.getRecentFiles,
   search_files: graphTools.searchFiles,
   get_teams: graphTools.getTeams,
@@ -274,6 +325,7 @@ const functionMap = {
   // deletion tools
   get_sent_emails: graphTools.getRecentSentEmails,
   delete_sent_email: graphTools.deleteSentEmail,
+  delete_inbox_email: graphTools.deleteInboxEmail,
 
   delete_calendar_event: graphTools.deleteCalendarEvents,
 
@@ -295,7 +347,7 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
   if (!func) throw new Error(`Unknown function: ${functionName}`);
 
   // Actions that require user confirmation
-  const confirmationRequiredActions = ['send_email', 'send_teams_message', 'delete_sent_email', 'delete_teams_message'];
+  const confirmationRequiredActions = ['send_email', 'send_teams_message', 'delete_sent_email', 'delete_inbox_email', 'delete_teams_message', 'update_calendar_event'];
 
   // If action needs confirmation AND we're not skipping it, validate user and return preview
   if (confirmationRequiredActions.includes(functionName) && sessionId && !skipConfirmation) {
@@ -385,6 +437,27 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
         };
         console.log(`  ✅ Found email to delete: "${actionData.subject}"`);
 
+      } else if (functionName === 'delete_inbox_email') {
+        // Find the email to delete first
+        console.log(`🔍 Finding inbox email to delete...`);
+        const searchResult = await graphTools.deleteInboxEmail(args.subject || null, args.sender_email || null, userToken, true); // true = preview mode
+
+        if (!searchResult.success || searchResult.notFound) {
+          return {
+            success: false,
+            notFound: true,
+            message: searchResult.message || 'No matching inbox email found to delete'
+          };
+        }
+
+        actionData = {
+          subject: searchResult.emailToDelete.subject,
+          sender: searchResult.emailToDelete.sender,
+          receivedDate: searchResult.emailToDelete.receivedDate,
+          messageId: searchResult.emailToDelete.id
+        };
+        console.log(`  ✅ Found inbox email to delete: "${actionData.subject}"`);
+
       } else if (functionName === 'delete_teams_message') {
         // Find the Teams message to delete first
         console.log(`🔍 Finding Teams message to delete...`);
@@ -405,6 +478,37 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
           messageId: searchResult.messageToDelete.messageId
         };
         console.log(`  ✅ Found Teams message to delete`);
+
+      } else if (functionName === 'update_calendar_event') {
+        console.log(`🔍 Finding calendar event to update...`);
+        const searchResult = await graphTools.updateCalendarEvent(
+          args.subject,
+          args.add_attendees || [],
+          args.new_subject || null,
+          args.new_start_time || null,
+          args.new_end_time || null,
+          userToken,
+          true // preview mode flag
+        );
+
+        if (!searchResult.success) {
+          return {
+            success: false,
+            notFound: true,
+            message: searchResult.message || 'No matching calendar event found'
+          };
+        }
+
+        const previewData = searchResult.previewData;
+
+        actionData = {
+          subject: previewData.originalSubject,
+          newSubject: previewData.newSubject,
+          newStart: previewData.newStart ? new Date(previewData.newStart).toLocaleString() : 'No change',
+          newEnd: previewData.newEnd ? new Date(previewData.newEnd).toLocaleString() : 'No change',
+          attendees: previewData.attendees
+        };
+        console.log(`  ✅ Found calendar event to update: "${actionData.subject}"`);
       }
 
       // Create preview with cached validated data
@@ -459,6 +563,17 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       ];
       break;
 
+    case 'update_calendar_event':
+      params = [
+        args.subject,
+        args.add_attendees || [],
+        args.new_subject || null,
+        args.new_start_time || null,
+        args.new_end_time || null,
+        userToken
+      ];
+      break;
+
     case 'send_teams_message':
       params = [args.recipient_name, args.message, userToken, null];
       break;
@@ -488,6 +603,10 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       params = [args.subject || null, args.recipient_email || null, userToken];
       break;
 
+    case 'delete_inbox_email':
+      params = [args.subject || null, args.sender_email || null, userToken];
+      break;
+
     case 'delete_calendar_event':
       params = [args.subject || null, null, null, userToken];
       break;
@@ -502,8 +621,16 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       break;
   }
 
-  const result = await func(...params);
-  return result;
+  try {
+    const result = await func(...params);
+    return result;
+  } catch (error) {
+    console.error(`❌ Tool execution failed for ${functionName}:`, error.message);
+    return {
+      success: false,
+      error: `Tool execution failed: ${error.message}. Please inform the user.`
+    };
+  }
 }
 
 // ======================================

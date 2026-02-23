@@ -1017,26 +1017,57 @@ async function createCalendarEvent(
 
 
 async function updateCalendarEvent(
-  eventId,
+  subject,
   newAttendeeNames = [],
   newSubject = null,
   newStart = null,
   newEnd = null,
-  userToken = null
+  userToken = null,
+  previewMode = false
 ) {
   try {
-    console.log(`📅 Updating calendar event: ${eventId}`);
+    console.log(`📅 Searching for calendar event to update: "${subject}"`);
 
     if (!userToken) throw new Error('Missing user token.');
 
     const client = await getGraphClient(userToken);
 
-    const existingEvent = await client
-      .api(`/me/events/${eventId}`)
-      .select('subject,start,end,attendees,isOnlineMeeting,onlineMeeting')
+    // Find the event by subject
+    let startDate = new Date();
+    startDate.setHours(0, 0, 0, 0); // Start of today
+    let endDate = new Date();
+    endDate.setDate(endDate.getDate() + 30); // Look ahead 30 days
+
+    let filterQuery = `start/dateTime ge '${startDate.toISOString()}' and start/dateTime le '${endDate.toISOString()}'`;
+
+    const events = await client
+      .api('/me/calendar/events')
+      .filter(filterQuery)
+      .select('id,subject,start,end,attendees,isOnlineMeeting,onlineMeeting')
+      .top(50)
+      .orderby('start/dateTime')
       .get();
 
-    console.log(`   → Current event: "${existingEvent.subject}"`);
+    if (!events.value || events.value.length === 0) {
+      return { success: false, notFound: true, message: 'No upcoming events found' };
+    }
+
+    let matchingEvents = events.value;
+    if (subject) {
+      const subjectLower = subject.toLowerCase();
+      matchingEvents = matchingEvents.filter(e =>
+        e.subject && e.subject.toLowerCase().includes(subjectLower)
+      );
+    }
+
+    if (matchingEvents.length === 0) {
+      return { success: false, notFound: true, message: `No event found containing "${subject}" in the next 30 days.` };
+    }
+
+    const existingEvent = matchingEvents[0];
+    const eventId = existingEvent.id;
+
+    console.log(`   → Found event: "${existingEvent.subject}"`);
     console.log(`   → Current attendees: ${existingEvent.attendees?.length || 0}`);
 
     const updateData = {};
@@ -1090,6 +1121,22 @@ async function updateCalendarEvent(
 
       updateData.attendees = [...existingAttendees, ...newAttendees];
       console.log(`   → Total attendees after update: ${updateData.attendees.length}`);
+    }
+
+    // ✅ PREVIEW MODE: Return event details without updating
+    if (previewMode) {
+      console.log('   👁️ Preview mode - not updating yet');
+      return {
+        success: true,
+        previewData: {
+          eventId: eventId,
+          originalSubject: existingEvent.subject,
+          newSubject: updateData.subject || existingEvent.subject,
+          newStart: updateData.start?.dateTime || existingEvent.start?.dateTime,
+          newEnd: updateData.end?.dateTime || existingEvent.end?.dateTime,
+          attendees: updateData.attendees ? updateData.attendees.map(a => a.emailAddress.name || a.emailAddress.address).join(', ') : (existingEvent.attendees?.map(a => a.emailAddress.name || a.emailAddress.address).join(', ') || 'No attendees')
+        }
+      };
     }
 
     const updatedEvent = await client
@@ -1932,6 +1979,120 @@ async function deleteSentEmail(subject = null, recipientEmail = null, userToken 
   }
 }
 
+async function deleteInboxEmail(subject = null, senderEmail = null, userToken = null, previewMode = false) {
+  try {
+    console.log(`🗑️ Searching for inbox email to delete...`);
+    console.log(`   Subject filter: ${subject || 'none'}, Sender filter: ${senderEmail || 'none'}`);
+
+    const client = await getGraphClient(userToken);
+
+    console.log('   📥 Fetching recent inbox emails...');
+
+    const messages = await client
+      .api('/me/mailFolders/inbox/messages')
+      .select('id,subject,from,receivedDateTime')
+      .top(50)
+      .orderby('receivedDateTime DESC')
+      .get();
+
+    if (!messages.value || messages.value.length === 0) {
+      console.log('   ❌ No inbox emails found');
+      return {
+        success: false,
+        notFound: true,
+        message: 'No emails found in your Inbox'
+      };
+    }
+
+    console.log(`   📧 Retrieved ${messages.value.length} inbox emails`);
+
+    let candidates = messages.value;
+
+    if (subject) {
+      const subjectLower = subject.toLowerCase();
+      candidates = candidates.filter(msg => {
+        const msgSubject = msg.subject || '';
+        return msgSubject.toLowerCase().includes(subjectLower);
+      });
+      console.log(`   🔍 After subject filter ("${subject}"): ${candidates.length} matches`);
+    }
+
+    if (senderEmail) {
+      const senderLower = senderEmail.toLowerCase();
+      candidates = candidates.filter(msg => {
+        if (!msg.from) {
+          return false;
+        }
+        const address = msg.from.emailAddress?.address || '';
+        const name = msg.from.emailAddress?.name || '';
+        return address.toLowerCase().includes(senderLower) ||
+          name.toLowerCase().includes(senderLower);
+      });
+      console.log(`   🔍 After sender filter ("${senderEmail}"): ${candidates.length} matches`);
+    }
+
+    if (candidates.length === 0) {
+      const criteria = [];
+      if (subject) criteria.push(`subject containing "${subject}"`);
+      if (senderEmail) criteria.push(`sender containing "${senderEmail}"`);
+
+      console.log(`   ❌ No emails matched the criteria`);
+      return {
+        success: false,
+        notFound: true,
+        message: `No inbox email found with ${criteria.join(' and ')}`
+      };
+    }
+
+    const emailToDelete = candidates[0];
+    const senderInfo = emailToDelete.from?.emailAddress?.address || 'unknown';
+
+    console.log(`   🎯 Selected email to delete:`);
+    console.log(`      Subject: "${emailToDelete.subject}"`);
+    console.log(`      From: ${senderInfo}`);
+    console.log(`      Received: ${new Date(emailToDelete.receivedDateTime).toLocaleString()}`);
+    console.log(`      ID: ${emailToDelete.id}`);
+
+    // ✅ PREVIEW MODE: Return email details without deleting
+    if (previewMode) {
+      console.log('   👁️ Preview mode - not deleting yet');
+      return {
+        success: true,
+        emailToDelete: {
+          id: emailToDelete.id,
+          subject: emailToDelete.subject,
+          sender: senderInfo,
+          receivedDate: new Date(emailToDelete.receivedDateTime).toLocaleString()
+        }
+      };
+    }
+
+    console.log(`   🗑️ Deleting email...`);
+
+    await client.api(`/me/messages/${emailToDelete.id}`).delete();
+
+    console.log('   ✅ Email deleted successfully!');
+
+    return {
+      success: true,
+      message: `Successfully deleted email: "${emailToDelete.subject}"`,
+      deletedSubject: emailToDelete.subject,
+      deletedId: emailToDelete.id,
+      deletedFrom: senderInfo,
+      receivedDate: new Date(emailToDelete.receivedDateTime).toLocaleString()
+    };
+
+  } catch (error) {
+    console.error('❌ Error in deleteInboxEmail:', error);
+
+    if (error.statusCode) {
+      throw new Error(`Graph API error (${error.code || error.statusCode}): ${error.message}`);
+    }
+
+    throw new Error('Failed to delete inbox email: ' + error.message);
+  }
+}
+
 // Get user profile photo
 async function getUserProfilePhoto(userToken = null, sessionId = null) {
   try {
@@ -2038,5 +2199,6 @@ module.exports = {
   getRecentSentEmails,
   deleteEmail,
   deleteSentEmail,
+  deleteInboxEmail,
   getUserProfilePhoto
 };

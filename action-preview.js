@@ -44,11 +44,23 @@ const CONFIRMATION_CONFIG = {
     editableFields: ['subject', 'attendeeNames', 'startTime', 'endTime'],
     displayFields: ['subject', 'attendeeNames', 'startTime', 'endTime', 'isTeamsMeeting']
   },
+  update_calendar_event: {
+    title: '📅 Update Meeting Preview',
+    requiresConfirmation: true,
+    editableFields: ['newSubject', 'newStart', 'newEnd'],
+    displayFields: ['subject', 'newSubject', 'newStart', 'newEnd', 'attendees']
+  },
   delete_sent_email: {
     title: '🗑️ Delete Email Confirmation',
     requiresConfirmation: true,
     editableFields: [],
     displayFields: ['subject', 'recipient', 'sentDate', 'action']
+  },
+  delete_inbox_email: {
+    title: '🗑️ Delete Inbox Email Confirmation',
+    requiresConfirmation: true,
+    editableFields: [],
+    displayFields: ['subject', 'sender', 'receivedDate', 'action']
   },
   delete_teams_message: {
     title: '🗑️ Delete Teams Message Confirmation',
@@ -291,6 +303,23 @@ function formatPreviewForDisplay(preview) {
         status: preview.status
       };
 
+    case 'update_calendar_event':
+      return {
+        actionId: preview.actionId,
+        title: preview.title,
+        type: 'meeting',
+        details: {
+          originalSubject: preview.data.subject,
+          subject: preview.data.newSubject || preview.data.subject,
+          attendees: preview.data.attendees || 'No attendees',
+          startTime: preview.data.newStart,
+          endTime: preview.data.newEnd,
+          preview: `Update Meeting: ${preview.data.subject}`
+        },
+        editable: preview.editableFields,
+        status: preview.status
+      };
+
     case 'delete_sent_email':
       return {
         actionId: preview.actionId,
@@ -301,7 +330,24 @@ function formatPreviewForDisplay(preview) {
           recipient: preview.data.recipient || 'Unknown recipient',
           sentDate: preview.data.sentDate || 'Unknown date',
           action: 'Delete this email',
-          preview: `Delete email: "${preview.data.subject}"`
+          preview: `Delete sent email: "${preview.data.subject}"`
+        },
+        editable: preview.editableFields,
+        status: preview.status,
+        isDeletion: true
+      };
+
+    case 'delete_inbox_email':
+      return {
+        actionId: preview.actionId,
+        title: preview.title,
+        type: 'delete_email',
+        details: {
+          subject: preview.data.subject || 'Unknown subject',
+          sender: preview.data.sender || 'Unknown sender',
+          receivedDate: preview.data.receivedDate || 'Unknown date',
+          action: 'Delete this email',
+          preview: `Delete inbox email: "${preview.data.subject}"`
         },
         editable: preview.editableFields,
         status: preview.status,
