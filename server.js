@@ -77,10 +77,12 @@ app.post('/api/clear-session', express.json(), async (req, res) => {
 // Debug endpoint - view conversation history
 app.get('/api/debug/sessions', async (req, res) => {
   const sessions = {};
-  for (const [sessionId, history] of await conversationSessions.entries()) {
+  for (const [sessionId, conversationData] of await conversationSessions.entries()) {
     sessions[sessionId] = {
-      messageCount: history.length,
-      messages: history
+      messageCount: conversationData.history.length,
+      hasSummary: !!conversationData.summary,
+      messages: conversationData.history,
+      summary: conversationData.summary
     };
   }
   res.json(sessions);
@@ -188,7 +190,7 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
     const language = req.body.language || 'en-US';
 
     if (!(await conversationSessions.has(sessionId))) {
-      await conversationSessions.set(sessionId, []);
+      await conversationSessions.set(sessionId, [], '');
     }
 
     const audioBuffer = req.file.buffer;
@@ -229,10 +231,10 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
 
     // Step 2: Query Azure OpenAI Agent
     console.log('🤖 Querying AI agent...');
-    const conversationHistory = await conversationSessions.get(sessionId) || [];
+    const conversationData = await conversationSessions.get(sessionId) || { history: [], summary: '' };
 
     // Don't pass token object - pass sessionId for automatic token refresh
-    const agentResponse = await queryAgent(transcript, conversationHistory, sessionId, null);
+    const agentResponse = await queryAgent(transcript, conversationData, sessionId, null);
     console.log('✓ Agent Response:', agentResponse);
 
     // Check if response is an action_preview (skip TTS for confirmations)
@@ -428,7 +430,47 @@ async function speechToText(wavBuffer) {
 // Query Azure OpenAI Agent
 // Replace the queryAgent function in your server.js with this updated version
 
-async function queryAgent(text, conversationHistory = [], sessionId = 'default', userToken = null) {
+// Query Azure OpenAI Agent
+async function summarizeContext(oldSummary, oldMessages) {
+  try {
+    const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
+    const apiKey = process.env.AZURE_OPENAI_KEY;
+    const deployment = process.env.AZURE_OPENAI_DEPLOYMENT || 'gpt-4o-mini';
+
+    const client = new AzureOpenAI({
+      endpoint: endpoint,
+      apiKey: apiKey,
+      apiVersion: '2024-08-01-preview',
+      deployment: deployment
+    });
+
+    const messagesToSummarize = oldMessages.map(m => `${m.role.toUpperCase()}: ${m.content}`).join('\n');
+    let prompt = `You are a memory condensation agent. 
+Condense the following conversation history into a concise, running summary. 
+Omit pleasantries, keep facts, facts mentioned, user preferences, names, emails, completed tool executions, and ongoing goals.
+Write in a compact bullet-point style.
+
+PREVIOUS SUMMARY:
+${oldSummary || 'No previous summary.'}
+
+NEW MESSAGES TO INCORPORATE:
+${messagesToSummarize}`;
+
+    const result = await client.chat.completions.create({
+      model: deployment,
+      messages: [{ role: 'system', content: prompt }],
+      max_tokens: 500,
+      temperature: 0.3
+    });
+
+    return result.choices[0].message.content;
+  } catch (error) {
+    console.error('  ✗ Error summarizing context:', error.message);
+    return oldSummary; // fallback to keeping the old summary
+  }
+}
+
+async function queryAgent(text, conversationData = { history: [], summary: '' }, sessionId = 'default', userToken = null) {
   try {
     const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
     const apiKey = process.env.AZURE_OPENAI_KEY;
@@ -444,6 +486,9 @@ async function queryAgent(text, conversationHistory = [], sessionId = 'default',
       userToken = tokenData.accessToken;
       console.log('  → Retrieved user token from session store');
     }
+
+    let conversationHistory = Array.isArray(conversationData) ? conversationData : (conversationData.history || []);
+    let contextSummary = conversationData.summary || '';
 
     console.log('  → Sending request to Azure OpenAI...');
     console.log('  → Conversation history length:', conversationHistory.length);
@@ -472,6 +517,13 @@ async function queryAgent(text, conversationHistory = [], sessionId = 'default',
 
 CURRENT DATE & TIME: ${currentDate} ${currentTime}
 Today is: ${now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+
+================================================================================
+🧠 LONG-TERM MEMORY SUMMARY
+================================================================================
+Prior context from earlier in this conversation:
+${contextSummary || 'No prior context.'}
+(Use the above facts to inform your current responses seamlessly).
 
 ================================================================================
 📅 MEETING RULE — DEFAULT TO TEAMS MEETING
@@ -732,11 +784,18 @@ DO NOT just respond with text. ALWAYS call the appropriate tool when user reques
 
     // Keep only last 10 exchanges (20 messages)
     if (conversationHistory.length > 20) {
-      conversationHistory.splice(0, conversationHistory.length - 20);
+      const messagesToSummarize = conversationHistory.splice(0, conversationHistory.length - 20);
+      try {
+        console.log(`  → Summarizing ${messagesToSummarize.length} old messages...`);
+        contextSummary = await summarizeContext(contextSummary, messagesToSummarize);
+        console.log('  ✓ Context summarized successfully');
+      } catch (sumErr) {
+        console.error('  ✗ Non-fatal error in summarizeContext:', sumErr);
+      }
     }
 
-    // Save updated history back to db
-    await conversationSessions.set(sessionId, conversationHistory);
+    // Save updated history and summary back to db
+    await conversationSessions.set(sessionId, conversationHistory, contextSummary);
 
     console.log('  ✓ Received response from AI');
     return responseMessage.content;
@@ -788,31 +847,8 @@ app.post('/api/text-message', express.json(), async (req, res) => {
     }
 
     // Query the AI agent with the text message (pass null for userToken, sessionId for automatic refresh)
-    const currentHist = await conversationSessions.get(sessionId) || [];
-    const response = await queryAgent(text, currentHist, sessionId, null);
-
-    // Get or create conversation history for this session
-    if (!(await conversationSessions.has(sessionId))) {
-      await conversationSessions.set(sessionId, []);
-    }
-    const conversationHistory = await conversationSessions.get(sessionId);
-
-    // Add to conversation history
-    conversationHistory.push({
-      role: 'user',
-      content: text
-    });
-    conversationHistory.push({
-      role: 'assistant',
-      content: response
-    });
-
-    // Keep only last 20 messages
-    if (conversationHistory.length > 20) {
-      conversationHistory.splice(0, conversationHistory.length - 20);
-    }
-
-    await conversationSessions.set(sessionId, conversationHistory);
+    const currentHistData = await conversationSessions.get(sessionId) || { history: [], summary: '' };
+    const response = await queryAgent(text, currentHistData, sessionId, null);
 
     console.log('✓ Response generated successfully');
 

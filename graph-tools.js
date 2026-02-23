@@ -5,6 +5,12 @@ const { msalCachePlugin } = require('./storage');
 const formatters = require('./formatters');
 const timezoneHelper = require('./timezone-helper');
 
+// Binary file parsing libraries
+const pdfParse = require('pdf-parse');
+const mammoth = require('mammoth');
+const xlsx = require('xlsx');
+const officeParser = require('officeparser');
+
 // Get user email from environment variable
 const userEmail = process.env.MICROSOFT_USER_EMAIL;
 
@@ -588,7 +594,7 @@ async function getRecentEmails(count = 5, userToken = null, sessionId = null) {
 
     const messages = await client
       .api('/me/messages')
-      .select('id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments,attachmentCount')
+      .select('id,subject,from,receivedDateTime,bodyPreview,isRead,hasAttachments')
       .top(count)
       .orderby('receivedDateTime DESC')
       .get();
@@ -616,8 +622,7 @@ async function getRecentEmails(count = 5, userToken = null, sessionId = null) {
       subject: msg.subject,
       receivedDate: msg.receivedDateTime,
       preview: msg.bodyPreview.substring(0, 100),
-      hasAttachments: msg.hasAttachments,
-      attachmentCount: msg.attachmentCount || 0
+      hasAttachments: msg.hasAttachments
     }));
 
     // Always use formatter with timezone (never fallback)
@@ -1515,6 +1520,7 @@ async function getTeamsMessages(chatId = null, count = 10, userToken = null) {
         .api('/me/chats')
         .filter(`chatType eq 'oneOnOne'`)
         .expand('members')
+        .top(100)
         .get();
 
       const existingChat = chats.value.find(chat =>
@@ -2042,6 +2048,78 @@ async function readFileContent(driveId, itemId, userToken = null) {
         type: 'text',
         mimeType: contentType,
         content: text,
+        size: fileMeta.size,
+        downloadUrl: downloadUrl
+      };
+    } else if (contentType.includes('application/pdf')) {
+      console.log(`   📦 Parsing PDF file...`);
+      const arrayBuffer = await fetchResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const pdfData = await pdfParse(buffer);
+      return {
+        success: true,
+        name: fileMeta.name,
+        type: 'text', // Treated as text now for the AI
+        mimeType: contentType,
+        content: pdfData.text,
+        size: fileMeta.size,
+        downloadUrl: downloadUrl
+      };
+    } else if (
+      contentType.includes('application/vnd.openxmlformats-officedocument.wordprocessingml.document') ||
+      fileMeta.name.endsWith('.docx')
+    ) {
+      console.log(`   📦 Parsing DOCX file...`);
+      const arrayBuffer = await fetchResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const result = await mammoth.extractRawText({ buffer: buffer });
+      return {
+        success: true,
+        name: fileMeta.name,
+        type: 'text',
+        mimeType: contentType,
+        content: result.value,
+        size: fileMeta.size,
+        downloadUrl: downloadUrl
+      };
+    } else if (
+      contentType.includes('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') ||
+      fileMeta.name.endsWith('.xlsx')
+    ) {
+      console.log(`   📦 Parsing XLSX file...`);
+      const arrayBuffer = await fetchResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      const workbook = xlsx.read(buffer, { type: 'buffer' });
+      let allText = '';
+      workbook.SheetNames.forEach(sheetName => {
+        const sheet = workbook.Sheets[sheetName];
+        allText += `--- Sheet: ${sheetName} ---\n`;
+        allText += xlsx.utils.sheet_to_csv(sheet) + '\n\n';
+      });
+      return {
+        success: true,
+        name: fileMeta.name,
+        type: 'text',
+        mimeType: contentType,
+        content: allText,
+        size: fileMeta.size,
+        downloadUrl: downloadUrl
+      };
+    } else if (
+      contentType.includes('application/vnd.openxmlformats-officedocument.presentationml.presentation') ||
+      fileMeta.name.endsWith('.pptx')
+    ) {
+      console.log(`   📦 Parsing PPTX file...`);
+      const arrayBuffer = await fetchResponse.arrayBuffer();
+      const buffer = Buffer.from(arrayBuffer);
+      // OfficeParser requires a file path or buffer. We'll use parseOfficeAsync with the buffer
+      const pptxText = await officeParser.parseOfficeAsync(buffer);
+      return {
+        success: true,
+        name: fileMeta.name,
+        type: 'text',
+        mimeType: contentType,
+        content: pptxText,
         size: fileMeta.size,
         downloadUrl: downloadUrl
       };
