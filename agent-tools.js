@@ -156,13 +156,70 @@ const tools = [
     type: 'function',
     function: {
       name: 'search_files',
-      description: 'search files.',
+      description: 'Search for files in OneDrive or a specific SharePoint drive.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string' }
+          query: { type: 'string', description: 'Search query' },
+          drive_id: { type: 'string', description: 'Optional Drive ID to search within. If omitted, searches OneDrive.' }
         },
         required: ['query']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_sharepoint_sites',
+      description: 'Search for and list SharePoint sites.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'Search keyword (optional)' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_site_drives',
+      description: 'List document libraries (drives) in a specific SharePoint site.',
+      parameters: {
+        type: 'object',
+        properties: {
+          site_id: { type: 'string', description: 'The ID of the SharePoint site' }
+        },
+        required: ['site_id']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_files',
+      description: 'List files and folders in OneDrive or a specific SharePoint drive/folder.',
+      parameters: {
+        type: 'object',
+        properties: {
+          drive_id: { type: 'string', description: 'Optional Drive ID (required for SharePoint, omit for OneDrive)' },
+          folder_id: { type: 'string', description: 'Optional Folder ID to list contents of. If omitted, lists root.' }
+        }
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_file_content',
+      description: 'Read the text content of a file or get its download link.',
+      parameters: {
+        type: 'object',
+        properties: {
+          drive_id: { type: 'string', description: 'Optional Drive ID where the file is located (required for SharePoint, omit for OneDrive)' },
+          item_id: { type: 'string', description: 'The ID of the file to read' }
+        },
+        required: ['item_id']
       }
     }
   },
@@ -317,6 +374,10 @@ const functionMap = {
   update_calendar_event: graphTools.updateCalendarEvent,
   get_recent_files: graphTools.getRecentFiles,
   search_files: graphTools.searchFiles,
+  list_sharepoint_sites: graphTools.listSharePointSites,
+  list_site_drives: graphTools.getSiteDrives,
+  list_files: graphTools.listDriveItems,
+  read_file_content: graphTools.readFileContent,
   get_teams: graphTools.getTeams,
   get_user_profile: graphTools.getUserProfile,
   search_contact_email: graphTools.searchContactEmail,
@@ -583,7 +644,23 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       break;
 
     case 'search_files':
-      params = [args.query, userToken];
+      params = [args.query, userToken, args.drive_id || null];
+      break;
+
+    case 'list_sharepoint_sites':
+      params = [args.query || '', userToken];
+      break;
+
+    case 'list_site_drives':
+      params = [args.site_id, userToken];
+      break;
+
+    case 'list_files':
+      params = [args.drive_id || null, args.folder_id || null, userToken, sessionId];
+      break;
+
+    case 'read_file_content':
+      params = [args.drive_id || null, args.item_id, userToken];
       break;
 
     case 'get_teams':
