@@ -1,5 +1,5 @@
 # Build stage
-FROM node:18-bullseye AS builder
+FROM node:20-bullseye AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 # Production stage
-FROM node:18-bullseye
+FROM node:20-bullseye
 
 WORKDIR /app
 
