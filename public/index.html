@@ -252,6 +252,47 @@
         return String(response);
       };
 
+      // Helper component to render text with clickable links and prevent overflow
+      const RenderMessage = ({ text }) => {
+        if (typeof text !== 'string') return <span className="break-words min-w-0 block">{text}</span>;
+
+        // Match markdown links: [text](url) or raw URLs: http...
+        const parts = [];
+        const regex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s]+)/g;
+
+        let lastIndex = 0;
+        let match;
+
+        while ((match = regex.exec(text)) !== null) {
+          if (match.index > lastIndex) {
+            parts.push(text.substring(lastIndex, match.index));
+          }
+
+          if (match[1] && match[2]) {
+            // Markdown link
+            parts.push(
+              <a key={match.index} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline break-all font-medium transition-colors">
+                {match[1]}
+              </a>
+            );
+          } else if (match[3]) {
+            // Raw URL
+            parts.push(
+              <a key={match.index} href={match[3]} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-800 hover:underline break-all transition-colors">
+                {match[3]}
+              </a>
+            );
+          }
+          lastIndex = regex.lastIndex;
+        }
+
+        if (lastIndex < text.length) {
+          parts.push(text.substring(lastIndex));
+        }
+
+        return <span className="break-words min-w-0 block">{parts}</span>;
+      };
+
       // Voice options mapping for Azure TTS
       const voiceOptions = {
         'american': {
@@ -1381,19 +1422,19 @@
                         <div key={msg.id} className="space-y-3">
                           <div className="flex justify-end">
                             <div className="max-w-[75%]">
-                              <div className="bg-gradient-to-r from-red-500 to-red-600 text-white rounded-2xl rounded-tr-sm p-4">
-                                <p className="text-sm leading-relaxed">{msg.user}</p>
+                              <div className="bg-gradient-to-r from-red-500 to-red-600 text-white rounded-2xl rounded-tr-sm p-4 w-full">
+                                <p className="text-sm leading-relaxed break-words min-w-0 whitespace-pre-wrap">{msg.user}</p>
                               </div>
                               <p className="text-xs text-gray-400 mt-1 text-right">{msg.timestamp}</p>
                             </div>
                           </div>
 
-                          <div className="flex justify-start">
-                            <div className="max-w-[75%]">
-                              <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm p-4">
-                                <div className="flex items-start gap-2">
-                                  <span className="text-xl">🤖</span>
-                                  <p className="text-sm leading-relaxed flex-1 whitespace-pre-wrap">{formatAIResponse(msg.ai)}</p>
+                          <div className="flex justify-start w-full">
+                            <div className="max-w-[75%] min-w-0">
+                              <div className="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-sm p-4 w-full">
+                                <div className="flex items-start gap-2 min-w-0 overflow-hidden">
+                                  <span className="text-xl flex-shrink-0">🤖</span>
+                                  <div className="text-sm leading-relaxed flex-1 whitespace-pre-wrap break-words min-w-0 overflow-hidden"><RenderMessage text={formatAIResponse(msg.ai)} /></div>
                                 </div>
                               </div>
                               <p className="text-xs text-gray-400 mt-1">AI Assistant</p>

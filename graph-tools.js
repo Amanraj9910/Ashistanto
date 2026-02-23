@@ -985,10 +985,19 @@ async function createCalendarEvent(
 
       for (const attendee of attendeeNames) {
         try {
+          const htmlMessage = `
+            <p>You are invited to join the meeting:</p>
+            <h3>${subject}</h3>
+            <p>📅 <strong>Time:</strong> ${result.startTime}</p>
+            <br>
+            <p>🔗 <a href="${result.joinUrl}">Click here to join the meeting</a></p>
+          `;
           await sendTeamsMessage(
             attendee,
-            `You are invited to join the meeting:\n"${subject}"\n\n📅 Time: ${result.startTime}\n\n🔗 Join Link: ${result.joinUrl}`,
-            userToken
+            htmlMessage,
+            userToken,
+            null,
+            true
           );
           console.log(`   🚀 Link sent to: ${attendee}`);
         } catch (err) {
@@ -1323,7 +1332,7 @@ async function getTeamChannels(teamId, userToken = null) {
   }
 }
 
-async function sendTeamsMessage(recipientName, message, userToken = null, validatedRecipientData = null) {
+async function sendTeamsMessage(recipientName, message, userToken = null, validatedRecipientData = null, isHtml = false) {
   try {
     console.log(`💬 Sending Teams message to: ${recipientName}`);
 
@@ -1424,7 +1433,7 @@ async function sendTeamsMessage(recipientName, message, userToken = null, valida
     console.log('   → Sending message...');
     const messageBody = {
       body: {
-        contentType: 'text',
+        contentType: isHtml ? 'html' : 'text',
         content: message
       }
     };
