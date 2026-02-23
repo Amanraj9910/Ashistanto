@@ -1374,9 +1374,19 @@ async function sendTeamsMessage(recipientName, message, userToken = null, valida
     console.log(`   ✅ Found recipient ID: ${recipientUserId}`);
 
     console.log('   → Creating/finding chat...');
+
+    // We need the caller's ID to properly create a one-on-one chat
+    const me = await client.api('/me').select('id').get();
+    const myUserId = me.id;
+
     const chatBody = {
       chatType: 'oneOnOne',
       members: [
+        {
+          '@odata.type': '#microsoft.graph.aadUserConversationMember',
+          roles: ['owner'],
+          'user@odata.bind': `https://graph.microsoft.com/v1.0/users('${myUserId}')`
+        },
         {
           '@odata.type': '#microsoft.graph.aadUserConversationMember',
           roles: ['owner'],
@@ -1396,6 +1406,7 @@ async function sendTeamsMessage(recipientName, message, userToken = null, valida
         .api('/me/chats')
         .filter(`chatType eq 'oneOnOne'`)
         .expand('members')
+        .top(50) // Ensure we search through enough chats
         .get();
 
       const existingChat = chats.value.find(chat =>
@@ -1761,14 +1772,18 @@ async function getRecentFiles(count = 10, userToken = null, sessionId = null) {
   }
 }
 
-async function searchFiles(query, userToken = null) {
+async function searchFiles(query, userToken = null, driveId = null) {
   try {
-    console.log(`🔍 Searching files for: "${query}"`);
+    console.log(`🔍 Searching files for: "${query}"${driveId ? ` in drive ${driveId}` : ''}`);
     const client = await getGraphClient(userToken);
 
     // Request additional fields including parentReference for folder path
+    const endpoint = driveId
+      ? `/drives/${driveId}/root/search(q='${query}')`
+      : `/me/drive/root/search(q='${query}')`;
+
     const files = await client
-      .api(`/me/drive/root/search(q='${query}')`)
+      .api(endpoint)
       .select('id,name,webUrl,lastModifiedDateTime,size,file,parentReference,createdDateTime')
       .top(10)
       .get();
@@ -1797,6 +1812,8 @@ async function searchFiles(query, userToken = null) {
       }
 
       return {
+        id: file.id,
+        driveId: file.parentReference?.driveId || driveId || 'unknown',
         name: file.name,
         webUrl: file.webUrl,
         lastModified: new Date(file.lastModifiedDateTime).toLocaleString(),
@@ -1804,6 +1821,7 @@ async function searchFiles(query, userToken = null) {
         folderPath: folderPath || '/Root',
         breadcrumb: breadcrumb,
         type: file.file?.mimeType || 'folder',
+        isFolder: !file.file,
         location: `You can find this file at: ${breadcrumb}`
       };
     });
@@ -1819,6 +1837,220 @@ async function searchFiles(query, userToken = null) {
   } catch (error) {
     console.error('Error searching files:', error);
     throw new Error('Failed to search files: ' + error.message);
+  }
+}
+
+async function listSharePointSites(query = '', userToken = null) {
+  try {
+    console.log(`🔍 Searching SharePoint sites for: "${query}"`);
+    const client = await getGraphClient(userToken);
+
+    const endpoint = query ? `/sites?search=${query}` : '/sites?search=*';
+
+    const sites = await client
+      .api(endpoint)
+      .select('id,displayName,name,webUrl,description')
+      .top(10)
+      .get();
+
+    console.log(`   ✅ Found ${sites.value.length} sites`);
+
+    const formattedSites = sites.value.map(site => {
+      // Clean up the ID for easier usage (SharePoint IDs are often long strings with commas)
+      const siteId = site.id;
+
+      return {
+        id: siteId,
+        displayName: site.displayName || site.name || 'Unnamed Site',
+        name: site.name,
+        webUrl: site.webUrl,
+        description: site.description || 'No description'
+      };
+    });
+
+    return {
+      success: true,
+      count: formattedSites.length,
+      sites: formattedSites
+    };
+  } catch (error) {
+    console.error('Error listing SharePoint sites:', error);
+    throw new Error('Failed to list SharePoint sites: ' + error.message);
+  }
+}
+
+async function getSiteDrives(siteId, userToken = null) {
+  try {
+    console.log(`🔍 Getting drives for site: ${siteId}`);
+    const client = await getGraphClient(userToken);
+
+    const drives = await client
+      .api(`/sites/${siteId}/drives`)
+      .select('id,name,description,webUrl,driveType')
+      .get();
+
+    console.log(`   ✅ Found ${drives.value.length} drives`);
+
+    const formattedDrives = drives.value.map(drive => ({
+      id: drive.id,
+      name: drive.name,
+      description: drive.description || 'No description',
+      webUrl: drive.webUrl,
+      type: drive.driveType
+    }));
+
+    return {
+      success: true,
+      count: formattedDrives.length,
+      drives: formattedDrives
+    };
+  } catch (error) {
+    console.error('Error getting site drives:', error);
+    throw new Error('Failed to retrieve site drives: ' + error.message);
+  }
+}
+
+async function listDriveItems(driveId = null, folderId = null, userToken = null, sessionId = null) {
+  try {
+    console.log(`📂 Listing items for drive: ${driveId || 'OneDrive root'}, folder: ${folderId || 'root'}`);
+    const client = await getGraphClient(userToken);
+
+    let endpoint = '/me/drive/root/children'; // Default to OneDrive root
+
+    if (driveId && folderId) {
+      endpoint = `/drives/${driveId}/items/${folderId}/children`;
+    } else if (driveId) {
+      endpoint = `/drives/${driveId}/root/children`;
+    } else if (folderId) {
+      endpoint = `/me/drive/items/${folderId}/children`; // OneDrive specific folder
+    }
+
+    const items = await client
+      .api(endpoint)
+      .select('id,name,webUrl,lastModifiedDateTime,size,file,folder,parentReference,lastModifiedBy')
+      .top(50) // More items per page
+      .get();
+
+    console.log(`   ✅ Found ${items.value.length} items`);
+
+    const itemsList = items.value.map(item => ({
+      id: item.id,
+      driveId: item.parentReference?.driveId || driveId || 'unknown',
+      name: item.name,
+      type: item.file?.mimeType || 'folder',
+      isFolder: !!item.folder,
+      modifiedDate: item.lastModifiedDateTime,
+      size: item.size,
+      modifiedBy: item.lastModifiedBy?.user?.displayName || 'Unknown',
+      webUrl: item.webUrl
+    }));
+
+    // Format timezone if applicable, else return simple. We reuse the formatter if it matches 'recentFiles' return signature.
+    // For simplicity, returning raw if we don't have user timezone, otherwise using formatter
+    let userTimeZone = 'UTC';
+    if (sessionId) {
+      try {
+        const tz = await timezoneHelper.getUserTimeZone(sessionId, userToken);
+        if (tz) userTimeZone = tz;
+      } catch (err) { }
+    }
+
+    // Use formatters to get a clean layout
+    const formattedItemsList = itemsList.map(item => {
+      const modifiedTime = new Date(item.modifiedDate);
+      const formattedModified = formatters.formatDateTime ? formatters.formatDateTime(modifiedTime, userTimeZone) : modifiedTime.toLocaleString();
+      const fileSize = formatFileSize(item.size || 0);
+
+      return {
+        ...item,
+        modifiedDate: formattedModified,
+        size: fileSize,
+        overview: `${fileSize} • Modified by ${item.modifiedBy}`
+      };
+    });
+
+    // Sort folders first, then alphabetically
+    formattedItemsList.sort((a, b) => {
+      if (a.isFolder && !b.isFolder) return -1;
+      if (!a.isFolder && b.isFolder) return 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return {
+      success: true,
+      count: formattedItemsList.length,
+      driveId: driveId || 'root',
+      folderId: folderId || 'root',
+      items: formattedItemsList
+    };
+  } catch (error) {
+    console.error('Error listing drive items:', error);
+    throw new Error('Failed to retrieve drive items: ' + error.message);
+  }
+}
+
+async function readFileContent(driveId, itemId, userToken = null) {
+  try {
+    console.log(`📄 Reading file content for item: ${itemId} in drive: ${driveId || 'OneDrive'}`);
+    const client = await getGraphClient(userToken);
+
+    const endpoint = driveId
+      ? `/drives/${driveId}/items/${itemId}`
+      : `/me/drive/items/${itemId}`;
+
+    const fileMeta = await client.api(endpoint).get();
+
+    if (fileMeta.folder) {
+      throw new Error('Target is a folder, not a file');
+    }
+
+    const downloadUrl = fileMeta['@microsoft.graph.downloadUrl'];
+
+    if (!downloadUrl) {
+      throw new Error('File download URL not available');
+    }
+
+    console.log(`   🔗 Got download URL, fetching content...`);
+    const fetchResponse = await fetch(downloadUrl);
+
+    if (!fetchResponse.ok) {
+      throw new Error(`Failed to download file content: ${fetchResponse.statusText}`);
+    }
+
+    // Try to get text content, fallback to returning the download URL for binaries
+    const contentType = fetchResponse.headers.get('content-type') || '';
+
+    if (
+      contentType.includes('text/') ||
+      contentType.includes('application/json') ||
+      contentType.includes('application/xml') ||
+      contentType.includes('application/javascript')
+    ) {
+      const text = await fetchResponse.text();
+      return {
+        success: true,
+        name: fileMeta.name,
+        type: 'text',
+        mimeType: contentType,
+        content: text,
+        size: fileMeta.size,
+        downloadUrl: downloadUrl
+      };
+    } else {
+      console.log(`   📦 File is binary (${contentType}), returning link instead.`);
+      return {
+        success: true,
+        name: fileMeta.name,
+        type: 'binary',
+        mimeType: contentType,
+        content: `[File content is binary (${contentType}). Please use the download link.]`,
+        size: fileMeta.size,
+        downloadUrl: downloadUrl
+      };
+    }
+  } catch (error) {
+    console.error('Error reading file content:', error);
+    throw new Error('Failed to read file content: ' + error.message);
   }
 }
 
@@ -2228,6 +2460,10 @@ module.exports = {
   deleteCalendarEvents,
   getRecentFiles,
   searchFiles,
+  listSharePointSites,
+  getSiteDrives,
+  listDriveItems,
+  readFileContent,
   getTeams,
   getTeamChannels,
   getUserProfile,

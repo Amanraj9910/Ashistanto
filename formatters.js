@@ -68,25 +68,82 @@ function formatFiles(files, userTimeZone = 'UTC') {
 
   return files.map(file => {
     try {
-      const modifiedTime = new Date(file.lastModifiedDateTime);
+      const modifiedTime = new Date(file.lastModifiedDate || file.lastModifiedDateTime);
       const formattedModified = formatDateTime(modifiedTime, userTimeZone);
       const fileSize = formatFileSize(file.size || 0);
 
+      const isFolderLabel = file.isFolder ? '(Folder)' : '';
+
       return {
         id: file.id,
+        driveId: file.driveId,
         name: file.name,
-        type: getFileType(file.name),
+        type: file.isFolder ? 'Folder' : getFileType(file.name),
+        isFolder: file.isFolder,
         modifiedDate: formattedModified,
         size: fileSize,
-        modifiedBy: file.lastModifiedBy?.user?.displayName || 'Unknown',
+        modifiedBy: file.modifiedBy || file.lastModifiedBy?.user?.displayName || 'Unknown',
         webUrl: file.webUrl || null,
-        overview: `${fileSize} • Modified by ${file.lastModifiedBy?.user?.displayName || 'Unknown'}`
+        overview: `${isFolderLabel} ${fileSize} • Modified by ${file.modifiedBy || file.lastModifiedBy?.user?.displayName || 'Unknown'}`
       };
     } catch (err) {
       console.error('Error formatting file:', err);
       return null;
     }
   }).filter(f => f !== null);
+}
+
+/**
+ * Format SharePoint sites for user display
+ * Shows: name, description, webUrl
+ * 
+ * @param {Array} sites - Raw sites from Graph API
+ * @returns {Array} Formatted sites
+ */
+function formatSites(sites) {
+  if (!sites || !Array.isArray(sites)) return [];
+
+  return sites.map(site => {
+    try {
+      return {
+        id: site.id,
+        name: site.displayName || site.name || 'Unnamed Site',
+        description: site.description || 'No description',
+        webUrl: site.webUrl,
+        overview: `${site.displayName || site.name || 'Unnamed Site'} • ${site.description || 'No description'}`
+      };
+    } catch (err) {
+      console.error('Error formatting site:', err);
+      return null;
+    }
+  }).filter(s => s !== null);
+}
+
+/**
+ * Format document drives/libraries for user display
+ * Shows: name, type, description
+ * 
+ * @param {Array} drives - Raw drives from Graph API
+ * @returns {Array} Formatted drives
+ */
+function formatDrives(drives) {
+  if (!drives || !Array.isArray(drives)) return [];
+
+  return drives.map(drive => {
+    try {
+      return {
+        id: drive.id,
+        name: drive.name,
+        type: drive.driveType || drive.type,
+        description: drive.description || 'No description',
+        webUrl: drive.webUrl,
+        overview: `${drive.name} (${drive.driveType || drive.type}) • ${drive.description || 'No description'}`
+      };
+    } catch (err) {
+      console.error('Error formatting drive:', err);
+      return null;
+    }
+  }).filter(d => d !== null);
 }
 
 /**
@@ -291,6 +348,8 @@ function getFileType(filename) {
 module.exports = {
   formatCalendarEvents,
   formatFiles,
+  formatSites,
+  formatDrives,
   formatEmails,
   formatTeamsMessages,
   formatActionPreview,
