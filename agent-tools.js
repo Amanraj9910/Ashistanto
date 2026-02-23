@@ -408,7 +408,7 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
       }
 
       // Create preview with cached validated data
-      const preview = actionPreview.createActionPreview(functionName, actionData, validatedRecipientData);
+      const preview = await actionPreview.createActionPreview(functionName, actionData, validatedRecipientData);
       return {
         type: 'action_preview',
         preview: preview,
@@ -446,8 +446,7 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
 
     case 'create_calendar_event':
 
-      // 🔥 FORCE TEAMS MEETING ALWAYS
-      console.log("⚡ Teams meeting forced ON");
+      console.log(`⚡ Teams meeting flag: ${args.isTeamsMeeting}`);
 
       params = [
         args.subject,
@@ -455,7 +454,7 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
         args.end,
         args.location || '',
         args.attendeeNames || [],
-        true,        // ALWAYS TRUE (Teams enabled)
+        args.isTeamsMeeting !== undefined ? args.isTeamsMeeting : true,
         userToken
       ];
       break;
