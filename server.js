@@ -853,7 +853,7 @@ app.post('/api/preview-action', async (req, res) => {
     const { actionPreview } = require('./agent-tools');
 
     // Create preview
-    const preview = actionPreview.createActionPreview(actionType, actionData, sessionId);
+    const preview = await actionPreview.createActionPreview(actionType, actionData);
 
     console.log(`✓ Preview created for ${actionType}: `, preview.actionId);
 
@@ -897,9 +897,9 @@ app.post('/api/confirm-action', async (req, res) => {
     if (userChoice === 'edit') {
       // Apply edits to pending action
       if (edits) {
-        actionPreview.editPendingAction(actionId, edits);
+        await actionPreview.editPendingAction(actionId, edits);
       }
-      const updatedAction = actionPreview.getActionForExecution(actionId);
+      const updatedAction = await actionPreview.getActionForExecution(actionId);
       return res.json({
         success: true,
         message: 'Action edited successfully',
@@ -909,7 +909,7 @@ app.post('/api/confirm-action', async (req, res) => {
 
     if (userChoice === 'confirm') {
       // First confirm the action in the store
-      const confirmResult = actionPreview.confirmAction(actionId, { confirmed: true });
+      const confirmResult = await actionPreview.confirmAction(actionId, { confirmed: true });
       if (!confirmResult.success) {
         return res.status(404).json({
           error: confirmResult.error || 'Action not found or already processed'
@@ -917,7 +917,7 @@ app.post('/api/confirm-action', async (req, res) => {
       }
 
       // Get the confirmed action data
-      const pendingActionData = actionPreview.getPendingAction(actionId);
+      const pendingActionData = await actionPreview.getPendingAction(actionId);
       if (!pendingActionData) {
         return res.status(404).json({
           error: 'Action not found or expired'
@@ -992,7 +992,7 @@ app.post('/api/confirm-action', async (req, res) => {
         }
 
         // Clear the action after successful execution
-        actionPreview.clearAction(actionId);
+        await actionPreview.clearAction(actionId);
 
         console.log(`✓ Action executed: ${actionType} `);
 
