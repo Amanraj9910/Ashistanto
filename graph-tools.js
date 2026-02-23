@@ -1467,6 +1467,46 @@ async function getTeamsMessages(chatId = null, count = 10, userToken = null) {
 
       chatId = chats.value[0].id;
       console.log(`   ✅ Using most recent chat: ${chatId}`);
+    } else if (!chatId.includes(':')) {
+      // If chatId does not contain a colon (like 19: or 43:), treat it as a person's name
+      console.log(`   🔍 Treating "${chatId}" as a name. Searching for user...`);
+      const searchResult = await searchContactEmail(chatId, userToken);
+
+      if (!searchResult.found) {
+        throw new Error(`Could not find contact matching: ${chatId}`);
+      }
+
+      const recipientEmail = searchResult.results[0].email;
+
+      const users = await client
+        .api('/users')
+        .filter(`mail eq '${recipientEmail}' or userPrincipalName eq '${recipientEmail}'`)
+        .select('id')
+        .get();
+
+      if (!users.value || users.value.length === 0) {
+        throw new Error(`Could not find user ID for: ${recipientEmail} in Microsoft Teams directory.`);
+      }
+
+      const recipientUserId = users.value[0].id;
+      console.log(`   ✅ Found recipient ID: ${recipientUserId}. Finding chat...`);
+
+      const chats = await client
+        .api('/me/chats')
+        .filter(`chatType eq 'oneOnOne'`)
+        .expand('members')
+        .get();
+
+      const existingChat = chats.value.find(chat =>
+        chat.members.some(member => member.userId === recipientUserId)
+      );
+
+      if (existingChat) {
+        chatId = existingChat.id;
+        console.log(`   ✅ Found existing chat with ${recipientEmail}: ${chatId}`);
+      } else {
+        throw new Error(`No existing chat history found with ${recipientEmail}`);
+      }
     }
 
     console.log(`   → Fetching ${count} messages from chat...`);
