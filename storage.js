@@ -2,8 +2,37 @@ const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
 const fs = require('fs');
 
-const dbPath = process.env.DB_PATH || path.resolve(__dirname, 'data.sqlite');
-const db = new sqlite3.Database(dbPath);
+const defaultDbPath = path.resolve(__dirname, 'data.sqlite');
+const dbPath = process.env.DB_PATH || defaultDbPath;
+
+console.log(`[Storage] Initializing SQLite database at: ${dbPath}`);
+
+// Attempt to create the directory if it doesn't exist
+const dbDir = path.dirname(dbPath);
+try {
+    if (!fs.existsSync(dbDir)) {
+        console.log(`[Storage] Directory ${dbDir} does not exist. Attempting to create it...`);
+        fs.mkdirSync(dbDir, { recursive: true });
+    }
+} catch (err) {
+    console.error(`[Storage] ⚠️ Warning: Failed to create directory ${dbDir}. Permission denied?`);
+}
+
+const db = new sqlite3.Database(dbPath, (err) => {
+    if (err) {
+        console.error(`\n======================================================`);
+        console.error(`❌ FATAL ERRROR: SQLite unable to open database file`);
+        console.error(`Path: ${dbPath}`);
+        console.error(`Error details: ${err.message}`);
+        console.error(`\nPossible causes in Azure App Service:`);
+        console.error(`1. If DB_PATH is set to /home/... but WEBSITES_ENABLE_APP_SERVICE_STORAGE is not true.`);
+        console.error(`2. The Docker container runs as the 'node' user (from Dockerfile), which lacks write permissions to the mounted /home directory.`);
+        console.error(`\nTo fix immediately: Remove the DB_PATH environment variable in Azure Configuration to use ephemeral local storage.`);
+        console.error(`======================================================\n`);
+    } else {
+        console.log(`[Storage] ✅ SQLite database connected successfully.`);
+    }
+});
 
 // Initialize database schema
 db.serialize(() => {
