@@ -564,6 +564,12 @@ YOU MUST CALL: create_calendar_event(
 )
 
 ================================================================================
+💬 TEAMS CHAT CONTEXT (IMPORTANT):
+================================================================================
+Before replying to an ongoing Teams conversation or sending a message, ALWAYS fetch the recent chat history first using get_teams_messages. This ensures you have context about the recent discussion before you send a new message.
+Example: User says "reply to Jatin", you MUST FIRST call get_teams_messages (using their chat id or just their name if supported) to read the history, THEN use send_teams_message.
+
+================================================================================
 🗑️ DELETION FEATURES:
 ================================================================================
 DELETE EMAIL:
