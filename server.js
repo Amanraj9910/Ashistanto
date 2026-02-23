@@ -25,7 +25,8 @@ if (process.env.NODE_ENV === 'production' || process.env.DOCKER_ENV) {
 }
 
 // Import authentication router
-const { router: authRouter, userTokenStore } = require('./auth');
+const { router: authRouter } = require('./auth');
+const { userTokenStore, conversationSessions } = require('./storage');
 
 const app = express();
 const upload = multer({
@@ -64,19 +65,19 @@ app.get('/api/voices', (req, res) => {
 });
 
 // Clear conversation history endpoint
-app.post('/api/clear-session', express.json(), (req, res) => {
+app.post('/api/clear-session', express.json(), async (req, res) => {
   const sessionId = req.body.sessionId;
-  if (sessionId && conversationSessions.has(sessionId)) {
-    conversationSessions.delete(sessionId);
+  if (sessionId && await conversationSessions.has(sessionId)) {
+    await conversationSessions.delete(sessionId);
     console.log(`✓ Session ${sessionId} cleared`);
   }
   res.json({ success: true });
 });
 
 // Debug endpoint - view conversation history
-app.get('/api/debug/sessions', (req, res) => {
+app.get('/api/debug/sessions', async (req, res) => {
   const sessions = {};
-  for (const [sessionId, history] of conversationSessions.entries()) {
+  for (const [sessionId, history] of await conversationSessions.entries()) {
     sessions[sessionId] = {
       messageCount: history.length,
       messages: history
@@ -93,10 +94,10 @@ app.get('/api/user-profile', async (req, res) => {
     const sessionId = req.query.sessionId;
     console.log('🔍 [/api/user-profile] Session ID:', sessionId);
 
-    if (!sessionId || !userTokenStore.has(sessionId)) {
+    if (!sessionId || !(await userTokenStore.has(sessionId))) {
       console.error('❌ [/api/user-profile] No valid session found');
       console.error('❌ [/api/user-profile] Session ID provided:', sessionId);
-      console.error('❌ [/api/user-profile] Session exists in store:', userTokenStore.has(sessionId));
+      console.error('❌ [/api/user-profile] Session exists in store:', await userTokenStore.has(sessionId));
       return res.status(401).json({ error: 'No valid session' });
     }
 
@@ -132,7 +133,7 @@ app.get('/api/user-photo', async (req, res) => {
     const sessionId = req.query.sessionId;
     console.log('📷 Photo request for session:', sessionId);
 
-    if (!sessionId || !userTokenStore.has(sessionId)) {
+    if (!sessionId || !(await userTokenStore.has(sessionId))) {
       console.warn('❌ Invalid session for photo request');
       return res.status(401).json({ error: 'No valid session' });
     }
@@ -167,7 +168,7 @@ app.get('/api/user-photo', async (req, res) => {
 
 
 // Store conversation history per session (in production, use database)
-const conversationSessions = new Map();
+// const conversationSessions = new Map(); // Removed, imported from storage.js
 
 // Endpoint to process voice interaction
 app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
@@ -186,8 +187,8 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
     const accent = req.body.accent || 'american';
     const language = req.body.language || 'en-US';
 
-    if (!conversationSessions.has(sessionId)) {
-      conversationSessions.set(sessionId, []);
+    if (!(await conversationSessions.has(sessionId))) {
+      await conversationSessions.set(sessionId, []);
     }
 
     const audioBuffer = req.file.buffer;
@@ -228,7 +229,7 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
 
     // Step 2: Query Azure OpenAI Agent
     console.log('🤖 Querying AI agent...');
-    const conversationHistory = conversationSessions.get(sessionId);
+    const conversationHistory = await conversationSessions.get(sessionId) || [];
 
     // Don't pass token object - pass sessionId for automatic token refresh
     const agentResponse = await queryAgent(transcript, conversationHistory, sessionId, null);
@@ -438,8 +439,8 @@ async function queryAgent(text, conversationHistory = [], sessionId = 'default',
     }
 
     // ✅ FIX: Retrieve user token from userTokenStore if not provided
-    if (!userToken && sessionId && userTokenStore.has(sessionId)) {
-      const tokenData = userTokenStore.get(sessionId);
+    if (!userToken && sessionId && await userTokenStore.has(sessionId)) {
+      const tokenData = await userTokenStore.get(sessionId);
       userToken = tokenData.accessToken;
       console.log('  → Retrieved user token from session store');
     }
@@ -728,6 +729,9 @@ DO NOT just respond with text. ALWAYS call the appropriate tool when user reques
       conversationHistory.splice(0, conversationHistory.length - 20);
     }
 
+    // Save updated history back to db
+    await conversationSessions.set(sessionId, conversationHistory);
+
     console.log('  ✓ Received response from AI');
     return responseMessage.content;
   } catch (error) {
@@ -773,18 +777,19 @@ app.post('/api/text-message', express.json(), async (req, res) => {
     console.log(`✓ Accent: ${selectedAccent} `);
 
     // Verify session exists
-    if (!userTokenStore.has(sessionId)) {
+    if (!(await userTokenStore.has(sessionId))) {
       return res.status(401).json({ error: 'Invalid or expired session' });
     }
 
     // Query the AI agent with the text message (pass null for userToken, sessionId for automatic refresh)
-    const response = await queryAgent(text, conversationSessions.get(sessionId) || [], sessionId, null);
+    const currentHist = await conversationSessions.get(sessionId) || [];
+    const response = await queryAgent(text, currentHist, sessionId, null);
 
     // Get or create conversation history for this session
-    if (!conversationSessions.has(sessionId)) {
-      conversationSessions.set(sessionId, []);
+    if (!(await conversationSessions.has(sessionId))) {
+      await conversationSessions.set(sessionId, []);
     }
-    const conversationHistory = conversationSessions.get(sessionId);
+    const conversationHistory = await conversationSessions.get(sessionId);
 
     // Add to conversation history
     conversationHistory.push({
@@ -800,6 +805,8 @@ app.post('/api/text-message', express.json(), async (req, res) => {
     if (conversationHistory.length > 20) {
       conversationHistory.splice(0, conversationHistory.length - 20);
     }
+
+    await conversationSessions.set(sessionId, conversationHistory);
 
     console.log('✓ Response generated successfully');
 
@@ -831,7 +838,7 @@ app.post('/api/preview-action', async (req, res) => {
     }
 
     // Check session
-    const userToken = userTokenStore.get(sessionId);
+    const userToken = await userTokenStore.get(sessionId);
     if (!userToken) {
       return res.status(401).json({ error: 'Invalid or expired session' });
     }
@@ -871,7 +878,7 @@ app.post('/api/confirm-action', async (req, res) => {
 
     // Check session
     // Check session
-    const tokenData = userTokenStore.get(sessionId);
+    const tokenData = await userTokenStore.get(sessionId);
     if (!tokenData) {
       return res.status(401).json({ error: 'Invalid or expired session' });
     }

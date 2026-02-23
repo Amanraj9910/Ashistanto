@@ -1,6 +1,7 @@
 require('isomorphic-fetch');
 const { Client } = require('@microsoft/microsoft-graph-client');
 const { ConfidentialClientApplication } = require('@azure/msal-node');
+const { msalCachePlugin } = require('./storage');
 const formatters = require('./formatters');
 const timezoneHelper = require('./timezone-helper');
 
@@ -18,6 +19,9 @@ function getMsalClient() {
         clientId: process.env.MICROSOFT_CLIENT_ID,
         authority: `https://login.microsoftonline.com/${process.env.MICROSOFT_TENANT_ID}`,
         clientSecret: process.env.MICROSOFT_CLIENT_SECRET,
+      },
+      cache: {
+        cachePlugin: msalCachePlugin
       }
     };
     _msalClientInstance = new ConfidentialClientApplication(config);
@@ -41,13 +45,13 @@ async function getAuthUrl() {
     'offline_access'
   ];
 
-  let redirectUri;
-  if (process.env.REDIRECT_URI) {
-    redirectUri = process.env.REDIRECT_URI;
-  } else if (process.env.NODE_ENV === 'production') {
-    redirectUri = 'https://ashistanto-bhc0fpeugkd9fqft.canadacentral-01.azurewebsites.net/auth/callback';
-  } else {
-    redirectUri = `http://localhost:${process.env.PORT || 3000}/auth/callback`;
+  let redirectUri = process.env.REDIRECT_URI;
+  if (!redirectUri) {
+    if (process.env.WEBSITE_HOSTNAME) {
+      redirectUri = `https://${process.env.WEBSITE_HOSTNAME}/auth/callback`;
+    } else {
+      redirectUri = `http://localhost:${process.env.PORT || 3000}/auth/callback`;
+    }
   }
 
   console.log('🔐 Auth URL redirect_uri:', redirectUri);
@@ -71,13 +75,13 @@ async function getAccessTokenByAuthCode(code) {
   try {
     const msalClient = getMsalClient();
 
-    let redirectUri;
-    if (process.env.REDIRECT_URI) {
-      redirectUri = process.env.REDIRECT_URI;
-    } else if (process.env.NODE_ENV === 'production') {
-      redirectUri = 'https://microsoft-agent-aubbhefsbzagdhha.eastus-01.azurewebsites.net/auth/callback';
-    } else {
-      redirectUri = `http://localhost:${process.env.PORT || 3000}/auth/callback`;
+    let redirectUri = process.env.REDIRECT_URI;
+    if (!redirectUri) {
+      if (process.env.WEBSITE_HOSTNAME) {
+        redirectUri = `https://${process.env.WEBSITE_HOSTNAME}/auth/callback`;
+      } else {
+        redirectUri = `http://localhost:${process.env.PORT || 3000}/auth/callback`;
+      }
     }
 
     console.log('🔐 Token exchange redirect_uri:', redirectUri);

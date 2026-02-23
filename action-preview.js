@@ -21,9 +21,7 @@
 
 const formatters = require('./formatters');
 
-// Store pending actions waiting for user confirmation
-// Key: actionId, Value: action details
-const pendingActionsStore = new Map();
+const { pendingActionsStore } = require('./storage');
 
 // Configuration for confirmation workflows
 // IMPORTANT: Field names must match the data passed from agent-tools.js
@@ -68,7 +66,7 @@ const CONFIRMATION_CONFIG = {
  * @param {Object} validatedRecipientData - Optional pre-validated recipient data to cache
  * @returns {Object} Preview object with unique actionId
  */
-function createActionPreview(actionType, actionData, validatedRecipientData = null) {
+async function createActionPreview(actionType, actionData, validatedRecipientData = null) {
   // Validate action type
   if (!CONFIRMATION_CONFIG[actionType]) {
     throw new Error(`Unknown action type: ${actionType}`);
@@ -90,7 +88,7 @@ function createActionPreview(actionType, actionData, validatedRecipientData = nu
   };
 
   // Store in pending actions
-  pendingActionsStore.set(actionId, {
+  await pendingActionsStore.set(actionId, {
     ...preview,
     originalData: actionData, // Keep original for reference
     editedData: null,
@@ -110,8 +108,8 @@ function createActionPreview(actionType, actionData, validatedRecipientData = nu
  * @param {String} actionId 
  * @returns {Object} Pending action or null
  */
-function getPendingAction(actionId) {
-  return pendingActionsStore.get(actionId) || null;
+async function getPendingAction(actionId) {
+  return await pendingActionsStore.get(actionId) || null;
 }
 
 /**
@@ -122,8 +120,8 @@ function getPendingAction(actionId) {
  * @param {Object} userConfirmation - {confirmed: true/false}
  * @returns {Object} Confirmation result
  */
-function confirmAction(actionId, userConfirmation = {}) {
-  const action = getPendingAction(actionId);
+async function confirmAction(actionId, userConfirmation = {}) {
+  const action = await getPendingAction(actionId);
 
   if (!action) {
     return {
@@ -134,7 +132,7 @@ function confirmAction(actionId, userConfirmation = {}) {
 
   if (userConfirmation.confirmed === false) {
     // User cancelled
-    pendingActionsStore.delete(actionId);
+    await pendingActionsStore.delete(actionId);
     console.log(`✗ Action cancelled: ${actionId}`);
     return {
       success: true,
@@ -148,6 +146,9 @@ function confirmAction(actionId, userConfirmation = {}) {
   action.confirmedAt = new Date().toISOString();
 
   console.log(`✓ Action confirmed: ${actionId}`);
+
+  // Save updated action back to storage
+  await pendingActionsStore.set(actionId, action);
 
   return {
     success: true,
@@ -165,8 +166,8 @@ function confirmAction(actionId, userConfirmation = {}) {
  * @param {Object} edits - Fields to edit
  * @returns {Object} Updated action preview
  */
-function editPendingAction(actionId, edits = {}) {
-  const action = getPendingAction(actionId);
+async function editPendingAction(actionId, edits = {}) {
+  const action = await getPendingAction(actionId);
 
   if (!action) {
     return {
@@ -195,6 +196,9 @@ function editPendingAction(actionId, edits = {}) {
 
   console.log(`✓ Action edited: ${actionId}`, edits);
 
+  // Save updated action back to storage
+  await pendingActionsStore.set(actionId, action);
+
   return {
     success: true,
     actionId: actionId,
@@ -213,8 +217,8 @@ function editPendingAction(actionId, edits = {}) {
  * @param {String} actionId 
  * @returns {Object} Data ready for execution
  */
-function getActionForExecution(actionId) {
-  const action = getPendingAction(actionId);
+async function getActionForExecution(actionId) {
+  const action = await getPendingAction(actionId);
 
   if (!action) return null;
   if (action.status !== 'confirmed') return null;
@@ -226,9 +230,9 @@ function getActionForExecution(actionId) {
  * Clear/remove a processed action
  * @param {String} actionId 
  */
-function clearAction(actionId) {
-  if (pendingActionsStore.has(actionId)) {
-    pendingActionsStore.delete(actionId);
+async function clearAction(actionId) {
+  if (await pendingActionsStore.has(actionId)) {
+    await pendingActionsStore.delete(actionId);
     console.log(`✓ Action cleared: ${actionId}`);
   }
 }
@@ -359,8 +363,9 @@ function filterActionData(data, fields) {
  * Get all pending actions (for debugging/UI)
  * @returns {Array} List of pending actions
  */
-function getAllPendingActions() {
-  return Array.from(pendingActionsStore.values()).map(action => ({
+async function getAllPendingActions() {
+  const actions = await pendingActionsStore.values();
+  return actions.map(action => ({
     actionId: action.actionId,
     actionType: action.actionType,
     status: action.status,
@@ -372,14 +377,14 @@ function getAllPendingActions() {
  * Clean up expired actions (older than 1 hour)
  * Call periodically to prevent memory leaks
  */
-function cleanupExpiredActions() {
+async function cleanupExpiredActions() {
   const oneHourAgo = Date.now() - (60 * 60 * 1000);
   let cleaned = 0;
 
-  for (const [actionId, action] of pendingActionsStore.entries()) {
+  for (const [actionId, action] of await pendingActionsStore.entries()) {
     const createdTime = new Date(action.timestamp).getTime();
     if (createdTime < oneHourAgo) {
-      pendingActionsStore.delete(actionId);
+      await pendingActionsStore.delete(actionId);
       cleaned++;
     }
   }

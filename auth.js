@@ -4,10 +4,7 @@ const {
   getAuthUrl,
   getAccessTokenByAuthCode
 } = require('./graph-tools');
-
-let loggedInUser = null; // store user session in memory
-// Export a map to store user tokens by session ID
-const userTokenStore = new Map();
+const { userTokenStore } = require('./storage');
 
 // Step 1: Redirect to Microsoft login
 router.get('/login', async (req, res) => {
@@ -16,16 +13,13 @@ router.get('/login', async (req, res) => {
 });
 
 // Logout endpoint - clear session
-router.post('/logout', (req, res) => {
+router.post('/logout', async (req, res) => {
   const { sessionId } = req.body;
 
-  if (sessionId && userTokenStore.has(sessionId)) {
-    userTokenStore.delete(sessionId);
+  if (sessionId && await userTokenStore.has(sessionId)) {
+    await userTokenStore.delete(sessionId);
     console.log('✅ Session cleared:', sessionId);
   }
-
-  // Clear the logged in user
-  loggedInUser = null;
 
   res.json({ success: true, message: 'Logged out successfully' });
 });
@@ -45,24 +39,18 @@ router.get('/callback', async (req, res) => {
     // Generate a session ID for this user 
     const sessionId = `session_${Date.now()}`;
 
-    loggedInUser = {
-      sessionId: sessionId,
-      accessToken: tokens.accessToken,
-      account: tokens.account, // Store MSAL account for silent token refresh
-      email: tokens.account.username
-    };
-
     // Store tokens with expiration metadata and MSAL account for automatic silent refresh
     // Note: MSAL manages refresh tokens internally in its cache - we don't need to store them
     // We store the `account` object which is required by acquireTokenSilent()
-    userTokenStore.set(sessionId, {
+    const email = tokens.account.username;
+    await userTokenStore.set(sessionId, {
       accessToken: tokens.accessToken,
       account: tokens.account,  // CRITICAL: needed for acquireTokenSilent
       expiresAt: Date.now() + ((tokens.expiresIn || 3600) * 1000), // Default 1 hour if not provided
-      email: tokens.account.username
+      email: email
     });
 
-    console.log('✅ User logged in:', loggedInUser.email);
+    console.log('✅ User logged in:', email);
     console.log('📌 Session ID:', sessionId);
     console.log('🔑 MSAL account stored for silent refresh:', !!tokens.account);
     console.log('⏰ Token expires at:', new Date(Date.now() + ((tokens.expiresIn || 3600) * 1000)).toISOString());
@@ -75,9 +63,12 @@ router.get('/callback', async (req, res) => {
 });
 
 // Step 3: Confirmation page with auto-redirect
-router.get('/success', (req, res) => {
+router.get('/success', async (req, res) => {
   const sessionId = req.query.sessionId;
-  if (!loggedInUser) return res.send('No active session');
+  const sessionData = sessionId ? await userTokenStore.get(sessionId) : null;
+
+  if (!sessionData) return res.send('No active session. Please try logging in again.');
+
   res.send(`
     <!DOCTYPE html>
     <html lang="en">
@@ -138,7 +129,7 @@ router.get('/success', (req, res) => {
               <h2 class="text-3xl font-bold text-gray-800 mb-3">Login Successful!</h2>
               <p class="text-gray-600 mb-2">Welcome back,</p>
               <p class="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-red-600 mb-6">
-                ${loggedInUser.email}
+                ${sessionData.email}
               </p>
 
               <!-- Loading indicator -->
@@ -185,14 +176,20 @@ router.get('/success', (req, res) => {
   `);
 });
 
-router.get('/user', (req, res) => {
-  if (!loggedInUser) return res.status(401).send('User not logged in');
-  res.json(loggedInUser);
+router.get('/user', async (req, res) => {
+  const sessionId = req.query.sessionId;
+  const sessionData = sessionId ? await userTokenStore.get(sessionId) : null;
+  if (!sessionData) return res.status(401).send('User not logged in');
+  res.json({
+    sessionId: sessionId,
+    accessToken: sessionData.accessToken,
+    email: sessionData.email
+  });
 });
 
-router.get('/session-token/:sessionId', (req, res) => {
+router.get('/session-token/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
-  const tokenData = userTokenStore.get(sessionId);
+  const tokenData = await userTokenStore.get(sessionId);
 
   if (!tokenData) {
     return res.status(404).json({ error: 'Session not found or token expired' });
@@ -202,4 +199,4 @@ router.get('/session-token/:sessionId', (req, res) => {
   res.json({ accessToken: tokenData.accessToken });
 });
 
-module.exports = { router, loggedInUser, userTokenStore };
+module.exports = { router };
