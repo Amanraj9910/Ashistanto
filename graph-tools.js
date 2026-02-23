@@ -200,8 +200,8 @@ async function getGraphClient(userAccessToken = null, sessionId = null) {
 
   // If sessionId is provided, use MSAL's silent token refresh
   if (sessionId) {
-    const { userTokenStore } = require('./auth');
-    const tokenData = userTokenStore.get(sessionId);
+    const { userTokenStore } = require('./storage');
+    const tokenData = await userTokenStore.get(sessionId);
 
     if (!tokenData) {
       throw new Error('Session not found. Please log in again.');
@@ -222,7 +222,7 @@ async function getGraphClient(userAccessToken = null, sessionId = null) {
             account: newTokenResponse.account || tokenData.account,
             expiresAt: Date.now() + ((newTokenResponse.expiresIn || 3600) * 1000),
           };
-          userTokenStore.set(sessionId, updatedTokenData);
+          await userTokenStore.set(sessionId, updatedTokenData);
           accessToken = updatedTokenData.accessToken;
           console.log(`✅ Token refreshed silently for session: ${sessionId}`);
         } else {
@@ -308,11 +308,11 @@ async function getSenderProfile(userToken = null, sessionId = null) {
 
     // Check token store status
     if (sessionId) {
-      const { userTokenStore } = require('./auth');
-      const hasSession = userTokenStore.has(sessionId);
+      const { userTokenStore } = require('./storage');
+      const hasSession = await userTokenStore.has(sessionId);
       console.error('❌ [getSenderProfile] Session exists in token store:', hasSession);
       if (hasSession) {
-        const tokenData = userTokenStore.get(sessionId);
+        const tokenData = await userTokenStore.get(sessionId);
         console.error('❌ [getSenderProfile] Token data available:', {
           hasAccessToken: !!tokenData?.accessToken,
           hasAccount: !!tokenData?.account,
