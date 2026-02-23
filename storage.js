@@ -58,11 +58,13 @@ db.serialize(() => {
     )`);
 
     // Ensure backwards compatibility with older installations
-    try {
-        db.run(`ALTER TABLE conversation_sessions ADD COLUMN context_summary TEXT`);
-    } catch (err) {
-        // Ignored. The column likely already exists.
-    }
+    db.run(`ALTER TABLE conversation_sessions ADD COLUMN context_summary TEXT`, (err) => {
+        if (err && err.message.includes('duplicate column name')) {
+            // Ignored. The column already exists.
+        } else if (err) {
+            console.error('[Storage] Error adding context_summary column:', err.message);
+        }
+    });
 
     db.run(`CREATE TABLE IF NOT EXISTS msal_cache (
         id TEXT PRIMARY KEY,
