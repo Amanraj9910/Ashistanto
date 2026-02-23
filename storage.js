@@ -53,8 +53,16 @@ db.serialize(() => {
 
     db.run(`CREATE TABLE IF NOT EXISTS conversation_sessions (
         session_id TEXT PRIMARY KEY,
-        history TEXT
+        history TEXT,
+        context_summary TEXT
     )`);
+
+    // Ensure backwards compatibility with older installations
+    try {
+        db.run(`ALTER TABLE conversation_sessions ADD COLUMN context_summary TEXT`);
+    } catch (err) {
+        // Ignored. The column likely already exists.
+    }
 
     db.run(`CREATE TABLE IF NOT EXISTS msal_cache (
         id TEXT PRIMARY KEY,
@@ -148,17 +156,20 @@ const pendingActionsStore = {
 
 // --- Conversation Sessions Wrapper ---
 const conversationSessions = {
-    async set(sessionId, historyArr) {
+    async set(sessionId, historyArr, summaryStr = '') {
         const historyStr = JSON.stringify(historyArr);
         await runQuery(
-            `INSERT OR REPLACE INTO conversation_sessions (session_id, history) VALUES (?, ?)`,
-            [sessionId, historyStr]
+            `INSERT OR REPLACE INTO conversation_sessions (session_id, history, context_summary) VALUES (?, ?, ?)`,
+            [sessionId, historyStr, summaryStr]
         );
     },
     async get(sessionId) {
-        const row = await getQuery(`SELECT history FROM conversation_sessions WHERE session_id = ?`, [sessionId]);
-        if (!row) return undefined;
-        return JSON.parse(row.history);
+        const row = await getQuery(`SELECT history, context_summary FROM conversation_sessions WHERE session_id = ?`, [sessionId]);
+        if (!row) return { history: undefined, summary: '' };
+        return {
+            history: JSON.parse(row.history || '[]'),
+            summary: row.context_summary || ''
+        };
     },
     async has(sessionId) {
         const row = await getQuery(`SELECT 1 FROM conversation_sessions WHERE session_id = ?`, [sessionId]);
@@ -168,8 +179,8 @@ const conversationSessions = {
         await runQuery(`DELETE FROM conversation_sessions WHERE session_id = ?`, [sessionId]);
     },
     async entries() {
-        const rows = await allQuery(`SELECT session_id, history FROM conversation_sessions`);
-        return rows.map(r => [r.session_id, JSON.parse(r.history)]);
+        const rows = await allQuery(`SELECT session_id, history, context_summary FROM conversation_sessions`);
+        return rows.map(r => [r.session_id, { history: JSON.parse(r.history || '[]'), summary: r.context_summary || '' }]);
     }
 };
 
