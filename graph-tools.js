@@ -383,11 +383,14 @@ async function searchContactEmail(name, userToken = null, sessionId = null) {
 
         const results = contacts.value
           .filter(contact => contact.emailAddresses && contact.emailAddresses.length > 0)
-          .map(contact => ({
-            name: contact.displayName,
-            email: contact.emailAddresses[0].address,
-            source: 'personal_contacts'
-          }));
+          .map(contact => {
+            const preferred = contact.emailAddresses.find(e => e.address && e.address.toLowerCase().endsWith('@hoshodigital.com'));
+            return {
+              name: contact.displayName,
+              email: preferred ? preferred.address : contact.emailAddresses[0].address,
+              source: 'personal_contacts'
+            };
+          });
 
         if (results.length > 0) {
           console.log(`  ✅ SUCCESS: Found ${results.length} valid contact(s)`);
@@ -432,11 +435,14 @@ async function searchContactEmail(name, userToken = null, sessionId = null) {
 
         const results = people.value
           .filter(person => person.emailAddresses && person.emailAddresses.length > 0)
-          .map(person => ({
-            name: person.displayName,
-            email: person.emailAddresses[0].address,
-            source: 'people_api'
-          }));
+          .map(person => {
+            const preferred = person.emailAddresses.find(e => e.address && e.address.toLowerCase().endsWith('@hoshodigital.com'));
+            return {
+              name: person.displayName,
+              email: preferred ? preferred.address : person.emailAddresses[0].address,
+              source: 'people_api'
+            };
+          });
 
         if (results.length > 0) {
           console.log(`  ✅ SUCCESS: Found ${results.length} valid person(s)`);
@@ -481,11 +487,19 @@ async function searchContactEmail(name, userToken = null, sessionId = null) {
           console.log(`     ID: ${user.id}`);
         });
 
-        const results = users.value.map(user => ({
-          name: user.displayName,
-          email: user.mail || user.userPrincipalName,
-          source: 'organization_directory'
-        }));
+        const results = users.value.map(user => {
+          let emailToUse = user.mail || user.userPrincipalName;
+          if ((user.mail || '').toLowerCase().endsWith('@hoshodigital.com')) {
+            emailToUse = user.mail;
+          } else if ((user.userPrincipalName || '').toLowerCase().endsWith('@hoshodigital.com')) {
+            emailToUse = user.userPrincipalName;
+          }
+          return {
+            name: user.displayName,
+            email: emailToUse,
+            source: 'organization_directory'
+          };
+        });
 
         console.log(`  ✅ SUCCESS: Found ${results.length} user(s)`);
         console.log(`  📧 Selected: ${results[0].name} <${results[0].email}>`);
@@ -526,11 +540,19 @@ async function searchContactEmail(name, userToken = null, sessionId = null) {
           console.log(`     Mail: ${user.mail || 'N/A'}`);
         });
 
-        const results = matchedUsers.map(user => ({
-          name: user.displayName,
-          email: user.mail || user.userPrincipalName,
-          source: 'organization_directory_fallback'
-        }));
+        const results = matchedUsers.map(user => {
+          let emailToUse = user.mail || user.userPrincipalName;
+          if ((user.mail || '').toLowerCase().endsWith('@hoshodigital.com')) {
+            emailToUse = user.mail;
+          } else if ((user.userPrincipalName || '').toLowerCase().endsWith('@hoshodigital.com')) {
+            emailToUse = user.userPrincipalName;
+          }
+          return {
+            name: user.displayName,
+            email: emailToUse,
+            source: 'organization_directory_fallback'
+          };
+        });
 
         console.log(`  ✅ FALLBACK SUCCESS: Found ${results.length} user(s)`);
         console.log(`  📧 Selected: ${results[0].name} <${results[0].email}>`);
