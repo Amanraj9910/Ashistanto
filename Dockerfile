@@ -1,10 +1,10 @@
 # Build stage
-FROM node:20-bullseye AS builder
+FROM node:20-bookworm AS builder
 
 WORKDIR /app
 
 # Install ffmpeg and other required system dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update --fix-missing && apt-get install -y \
     ffmpeg \
     python3 \
     build-essential \
@@ -17,12 +17,12 @@ COPY package*.json ./
 RUN npm install --omit=dev
 
 # Production stage
-FROM node:20-bullseye
+FROM node:20-bookworm
 
 WORKDIR /app
 
 # Install ffmpeg, curl (for health check), and other runtime dependencies
-RUN apt-get update && apt-get install -y \
+RUN apt-get update --fix-missing && apt-get install -y \
     ffmpeg \
     curl \
     ca-certificates \
