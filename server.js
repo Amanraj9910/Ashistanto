@@ -289,6 +289,16 @@ app.post('/api/process-voice', upload.single('audio'), async (req, res) => {
       }
     });
 
+    // Check for token expiration
+    if (graphTools.isTokenExpiredError(error)) {
+      console.error('🔒 Token expired detected during voice processing');
+      return res.status(401).json({
+        error: 'Session expired. Please log in again.',
+        isTokenExpired: true,
+        requiresLogin: true
+      });
+    }
+
     res.status(500).json({
       error: error.message || 'Unknown error occurred'
     });
@@ -816,6 +826,27 @@ async function textToSpeech(text) {
   return ttsService.synthesizeText(text, 'american');
 }
 
+// Helper to handle API errors with proper token expiration handling
+function handleApiError(res, error, context = 'Operation failed') {
+  console.error(`❌ ${context}:`, error.message);
+  
+  // Check if this is a token expiration error
+  if (graphTools.isTokenExpiredError(error)) {
+    console.error('🔒 Token expired detected - user needs to re-authenticate');
+    return res.status(401).json({ 
+      error: 'Session expired. Please log in again.',
+      isTokenExpired: true,
+      requiresLogin: true
+    });
+  }
+  
+  // Standard error response
+  res.status(500).json({
+    error: error.message || context,
+    isTokenExpired: false
+  });
+}
+
 // Endpoint to process text messages
 app.post('/api/text-message', express.json(), async (req, res) => {
   try {
@@ -859,10 +890,7 @@ app.post('/api/text-message', express.json(), async (req, res) => {
     });
 
   } catch (error) {
-    console.error('❌ Error processing text message:', error.message);
-    res.status(500).json({
-      error: error.message || 'Failed to process text message'
-    });
+    handleApiError(res, error, 'Error processing text message');
   }
 });
 
@@ -898,10 +926,7 @@ app.post('/api/preview-action', async (req, res) => {
       preview: preview
     });
   } catch (error) {
-    console.error('❌ Error creating action preview:', error.message);
-    res.status(500).json({
-      error: error.message || 'Failed to create action preview'
-    });
+    handleApiError(res, error, 'Error creating action preview');
   }
 });
 
