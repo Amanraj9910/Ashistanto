@@ -24,6 +24,19 @@ router.post('/logout', async (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
+// Logout endpoint - GET version for frontend redirect
+router.get('/logout', async (req, res) => {
+  const sessionId = req.query.sessionId;
+  
+  if (sessionId && await userTokenStore.has(sessionId)) {
+    await userTokenStore.delete(sessionId);
+    console.log('✅ Session cleared (GET):', sessionId);
+  }
+  
+  // Redirect to login page
+  res.redirect('/login.html');
+});
+
 // Alternative route for /redirect (alias for /login)
 router.get('/redirect', async (req, res) => {
   const url = await getAuthUrl();

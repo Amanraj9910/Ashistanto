@@ -210,7 +210,9 @@ async function getGraphClient(userAccessToken = null, sessionId = null) {
     const tokenData = await userTokenStore.get(sessionId);
 
     if (!tokenData) {
-      throw new Error('Session not found. Please log in again.');
+      const err = new Error('Session not found. Please log in again.');
+      err.isTokenExpired = true;
+      throw err;
     }
 
     // Check if token needs refresh (expires in less than 5 minutes)
@@ -238,8 +240,11 @@ async function getGraphClient(userAccessToken = null, sessionId = null) {
         }
       } catch (error) {
         console.error(`❌ Silent token refresh failed for session ${sessionId}:`, error.message);
-        // Don't delete session — let the user see a proper error
-        accessToken = tokenData.accessToken;
+        // Mark this error as token-related so it can be handled properly
+        const err = new Error('Token expired. Please log in again.');
+        err.isTokenExpired = true;
+        err.originalError = error;
+        throw err;
       }
     } else {
       accessToken = tokenData.accessToken;
@@ -263,6 +268,32 @@ async function getGraphClient(userAccessToken = null, sessionId = null) {
       done(null, accessToken);
     }
   });
+}
+
+// Helper function to check if an error is token/authorization related
+function isTokenExpiredError(error) {
+  if (!error) return false;
+  
+  // Check for our custom flag
+  if (error.isTokenExpired) return true;
+  
+  // Check error message patterns
+  const msg = (error.message || '').toLowerCase();
+  if (msg.includes('token') && (msg.includes('expir') || msg.includes('invalid') || msg.includes('unauthorized'))) {
+    return true;
+  }
+  
+  // Check for HTTP 401 status
+  if (error.statusCode === 401 || error.status === 401) {
+    return true;
+  }
+  
+  // Check for authentication failure patterns
+  if (msg.includes('authentication') || msg.includes('unauthorized') || msg.includes('access denied')) {
+    return true;
+  }
+  
+  return false;
 }
 
 // Get sender's profile information
@@ -392,6 +423,15 @@ async function searchContactEmail(name, userToken = null, sessionId = null) {
             };
           });
 
+        // Sort results to prioritize @hoshodigital.com emails
+        results.sort((a, b) => {
+          const aIsHosho = a.email.toLowerCase().endsWith('@hoshodigital.com');
+          const bIsHosho = b.email.toLowerCase().endsWith('@hoshodigital.com');
+          if (aIsHosho && !bIsHosho) return -1; // a comes first
+          if (!aIsHosho && bIsHosho) return 1;  // b comes first
+          return 0; // keep original order
+        });
+
         if (results.length > 0) {
           console.log(`  ✅ SUCCESS: Found ${results.length} valid contact(s)`);
           console.log(`  📧 Selected: ${results[0].name} <${results[0].email}>`);
@@ -443,6 +483,15 @@ async function searchContactEmail(name, userToken = null, sessionId = null) {
               source: 'people_api'
             };
           });
+
+        // Sort results to prioritize @hoshodigital.com emails
+        results.sort((a, b) => {
+          const aIsHosho = a.email.toLowerCase().endsWith('@hoshodigital.com');
+          const bIsHosho = b.email.toLowerCase().endsWith('@hoshodigital.com');
+          if (aIsHosho && !bIsHosho) return -1; // a comes first
+          if (!aIsHosho && bIsHosho) return 1;  // b comes first
+          return 0; // keep original order
+        });
 
         if (results.length > 0) {
           console.log(`  ✅ SUCCESS: Found ${results.length} valid person(s)`);
@@ -501,6 +550,15 @@ async function searchContactEmail(name, userToken = null, sessionId = null) {
           };
         });
 
+        // Sort results to prioritize @hoshodigital.com emails
+        results.sort((a, b) => {
+          const aIsHosho = a.email.toLowerCase().endsWith('@hoshodigital.com');
+          const bIsHosho = b.email.toLowerCase().endsWith('@hoshodigital.com');
+          if (aIsHosho && !bIsHosho) return -1; // a comes first
+          if (!aIsHosho && bIsHosho) return 1;  // b comes first
+          return 0; // keep original order
+        });
+
         console.log(`  ✅ SUCCESS: Found ${results.length} user(s)`);
         console.log(`  📧 Selected: ${results[0].name} <${results[0].email}>`);
         console.log(`${'='.repeat(60)}\n`);
@@ -552,6 +610,15 @@ async function searchContactEmail(name, userToken = null, sessionId = null) {
             email: emailToUse,
             source: 'organization_directory_fallback'
           };
+        });
+
+        // Sort results to prioritize @hoshodigital.com emails
+        results.sort((a, b) => {
+          const aIsHosho = a.email.toLowerCase().endsWith('@hoshodigital.com');
+          const bIsHosho = b.email.toLowerCase().endsWith('@hoshodigital.com');
+          if (aIsHosho && !bIsHosho) return -1; // a comes first
+          if (!aIsHosho && bIsHosho) return 1;  // b comes first
+          return 0; // keep original order
         });
 
         console.log(`  ✅ FALLBACK SUCCESS: Found ${results.length} user(s)`);
@@ -2560,6 +2627,7 @@ module.exports = {
   refreshTokenSilently,
   getAccessTokenAppOnly,
   getGraphClient,
+  isTokenExpiredError,
   getRecentEmails,
   searchEmails,
   sendEmail,

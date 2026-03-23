@@ -337,6 +337,43 @@
       }, [showProfileMenu]);
 
       // Define fetchUserInfoWithPhoto BEFORE it's used in useEffect
+      const handleLogout = async () => {
+        try {
+          // Clear session on server
+          if (sessionId) {
+            await fetch('/auth/logout', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ sessionId })
+            });
+          }
+        } catch (err) {
+          console.error('Logout error:', err);
+        } finally {
+          // Always clear local storage and redirect
+          localStorage.removeItem('userSessionId');
+          window.location.href = '/login.html';
+        }
+      };
+
+      // Helper to check if response indicates token expiration
+      const checkTokenExpired = async (response) => {
+        if (!response.ok && response.status === 401) {
+          try {
+            const data = await response.json();
+            if (data.isTokenExpired || data.requiresLogin) {
+              console.log('🔒 Token expired detected - logging out');
+              await handleLogout();
+              return true;
+            }
+          } catch (e) {
+            // If we can't parse the response, still check status
+            console.log('⚠️ 401 response but unable to parse details');
+          }
+        }
+        return false;
+      };
+
       const fetchUserInfoWithPhoto = async (sessionId) => {
         try {
           // Fetch user profile from Graph API
@@ -681,6 +718,11 @@
             body: formData
           });
 
+          // Check if token expired
+          if (await checkTokenExpired(response)) {
+            throw new Error('Session expired');
+          }
+
           const data = await response.json();
 
           if (!response.ok) {
@@ -765,26 +807,7 @@
       };
 
       const logout = async () => {
-        const sessionId = localStorage.getItem('userSessionId');
-
-        // Clear server-side session
-        if (sessionId) {
-          try {
-            await fetch('/auth/logout', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ sessionId })
-            });
-          } catch (err) {
-            console.error('Error clearing server session:', err);
-          }
-        }
-
-        // Clear client-side session
-        localStorage.removeItem('userSessionId');
-
-        // Redirect to custom login page
-        window.location.href = '/login.html';
+        await handleLogout();
       };
 
       const stopSpeaking = () => {
@@ -827,6 +850,11 @@
               accent: selectedAccent
             })
           });
+
+          // Check if token expired
+          if (await checkTokenExpired(response)) {
+            throw new Error('Session expired');
+          }
 
           if (!response.ok) {
             throw new Error(`Server error: ${response.statusText}`);
