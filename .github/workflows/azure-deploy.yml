@@ -10,7 +10,7 @@ env:
   ACR_REGISTRY: ashistanto.azurecr.io
   IMAGE_NAME: ashistanto-image
   APP_NAME: hd-ashistanto-appservice
-  RESOURCE_GROUP: Ashistanto
+  RESOURCE_GROUP: rg_hd_Ashistanto
 
 permissions:
   id-token: write   # Required for OIDC
