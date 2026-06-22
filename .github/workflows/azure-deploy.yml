@@ -9,7 +9,7 @@ on:
 env:
   ACR_REGISTRY: ashistanto.azurecr.io
   IMAGE_NAME: ashistanto-image
-  APP_NAME: Ashistanto
+  APP_NAME: hd-ashistanto-appservice
   RESOURCE_GROUP: Ashistanto
 
 permissions:
