@@ -166,9 +166,9 @@ APP_REDIRECT_URI=http://localhost:3000/auth/callback
 ## 📱 API Documentation
 
 ### Get Available Voices
-```bash
+``bash
 GET /api/voices
-```
+``
 
 ### Process Voice Message
 ```bash
