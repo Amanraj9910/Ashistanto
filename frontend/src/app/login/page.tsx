@@ -1,30 +1,11 @@
 'use client';
 
 import { ShieldCheck } from 'lucide-react';
-import { useRouter } from 'next/navigation';
-import { useState } from 'react';
 import { BrandLogo } from '@/components/layout/brand-logo';
-import { getAuthLoginUrl, shouldUseMocks } from '@/lib/api';
-import { createId } from '@/lib/utils';
-import { useAppStore } from '@/store/use-app-store';
 
 export default function LoginPage() {
-  const router = useRouter();
-  const setSession = useAppStore((state) => state.setSession);
-  const [loading, setLoading] = useState(false);
-
   function handleLogin() {
-    setLoading(true);
-    const authUrl = getAuthLoginUrl();
-
-    if (!shouldUseMocks() && authUrl) {
-      window.location.href = authUrl;
-      return;
-    }
-
-    const sessionId = createId('frontend_session');
-    setSession(sessionId);
-    setTimeout(() => router.push('/'), 350);
+    window.location.href = '/';
   }
 
   return (
@@ -33,7 +14,9 @@ export default function LoginPage() {
         <div className="h-2 w-full bg-red-600" />
 
         <div className="flex flex-1 flex-col justify-center px-8 py-10 sm:px-14">
-          <BrandLogo className="mb-24" />
+          <div className="mt-5">
+            <BrandLogo className="mb-10" />
+          </div>
 
           <div className="max-w-sm">
             <h1 className="text-4xl font-extrabold tracking-tight text-slate-950">Secure Portal</h1>
@@ -46,20 +29,15 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={handleLogin}
-              disabled={loading}
               className="mt-10 flex w-full items-center justify-center gap-4 rounded-lg border border-slate-200 bg-white px-5 py-4 text-base font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-wait disabled:opacity-75"
             >
-              {loading ? (
-                <span className="h-5 w-5 animate-spin rounded-full border-2 border-red-600 border-t-transparent" />
-              ) : (
-                <span className="grid h-6 w-6 grid-cols-2 gap-0.5">
-                  <span className="bg-[#f25022]" />
-                  <span className="bg-[#7fba00]" />
-                  <span className="bg-[#00a4ef]" />
-                  <span className="bg-[#ffb900]" />
-                </span>
-              )}
-              <span>{loading ? 'Preparing workspace...' : 'Sign in with Microsoft'}</span>
+              <span className="grid h-6 w-6 grid-cols-2 gap-0.5">
+                <span className="bg-[#f25022]" />
+                <span className="bg-[#7fba00]" />
+                <span className="bg-[#00a4ef]" />
+                <span className="bg-[#ffb900]" />
+              </span>
+              <span>Sign in with Microsoft</span>
             </button>
 
             <div className="mt-10 rounded-lg border border-slate-200 bg-slate-50 px-5 py-4">

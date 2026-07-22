@@ -2,18 +2,16 @@
 
 import { useQuery } from '@tanstack/react-query';
 import { Search } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ChatPanel } from '@/components/chat/chat-panel';
 import { DashboardOverview } from '@/components/dashboard/dashboard-overview';
 import { AppSidebar } from '@/components/layout/app-sidebar';
 import { MobileHeader } from '@/components/layout/mobile-header';
-import { getConfig, getUserPhotoUrl, getUserProfile, logoutSession, validateSession } from '@/lib/api';
-import { greeting } from '@/lib/utils';
+import { clearConversation, getConfig, getUserPhotoUrl, getUserProfile, logoutSession } from '@/lib/api';
+import { createId, greeting } from '@/lib/utils';
 import { useAppStore } from '@/store/use-app-store';
 
 export default function DashboardPage() {
-  const router = useRouter();
   const sessionId = useAppStore((state) => state.sessionId);
   const user = useAppStore((state) => state.user);
   const messages = useAppStore((state) => state.messages);
@@ -26,39 +24,17 @@ export default function DashboardPage() {
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    let cancelled = false;
+    const storedSessionId = localStorage.getItem('userSessionId');
+    const activeSession = storedSessionId || sessionId || createId('frontend_session');
 
-    const checkSession = async () => {
-      const storedSessionId = localStorage.getItem('userSessionId');
-      const activeSession = storedSessionId || sessionId;
+    if (!storedSessionId && !sessionId) {
+      setSession(activeSession);
+    } else if (!sessionId) {
+      setSession(activeSession);
+    }
 
-      if (!activeSession) {
-        router.replace('/login');
-        return;
-      }
-
-      const isValid = await validateSession(activeSession);
-      if (!isValid) {
-        setSession(null);
-        router.replace('/login');
-        return;
-      }
-
-      if (!cancelled) {
-        setSession(activeSession);
-        setReady(true);
-      }
-    };
-
-    checkSession().catch(() => {
-      setSession(null);
-      router.replace('/login');
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [router, sessionId, setSession]);
+    setReady(true);
+  }, [sessionId, setSession]);
 
   const configQuery = useQuery({
     queryKey: ['config'],
@@ -91,7 +67,6 @@ export default function DashboardPage() {
     await logoutSession(sessionId);
     setSession(null);
     clearMessages();
-    router.replace('/login');
   }
 
   function handleNewSession() {

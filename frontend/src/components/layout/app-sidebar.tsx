@@ -1,6 +1,7 @@
 'use client';
 
 import { BarChart3, Bot, HelpCircle, LayoutDashboard, LogOut, Plus, Zap } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { useAppStore } from '@/store/use-app-store';
 import { cn } from '@/lib/utils';
 import { BrandLogo } from './brand-logo';
@@ -13,12 +14,10 @@ type AppSidebarProps = {
 
 const navItems = [
   { icon: LayoutDashboard, label: 'Dashboard', active: true },
-  { icon: Zap, label: 'Activity' },
-  { icon: BarChart3, label: 'Analytics' },
-  { icon: Bot, label: 'Automation' }
 ];
 
 export function AppSidebar({ onNewSession, onLogout }: AppSidebarProps) {
+  const router = useRouter();
   const user = useAppStore((state) => state.user);
   const sidebarOpen = useAppStore((state) => state.sidebarOpen);
   const setSidebarOpen = useAppStore((state) => state.setSidebarOpen);
@@ -39,18 +38,32 @@ export function AppSidebar({ onNewSession, onLogout }: AppSidebarProps) {
         )}
       >
         <BrandLogo />
+        
+        <div className="mt-8 grid gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              router.push('/login');
+              setSidebarOpen(false);
+            }}
+            className="inline-flex items-center justify-center gap-3 rounded-xl border border-slate-200 bg-white px-4 py-3 text-base font-semibold text-slate-700 shadow-sm transition hover:border-slate-300 hover:bg-slate-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+          >
+            <LogOut className="h-5 w-5" />
+            Login
+          </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            onNewSession();
-            setSidebarOpen(false);
-          }}
-          className="mt-8 inline-flex items-center justify-center gap-3 rounded-lg bg-red-600 px-4 py-3 text-base font-bold text-white shadow-sm transition hover:bg-red-700"
-        >
-          <Plus className="h-5 w-5" />
-          New Session
-        </button>
+          <button
+            type="button"
+            onClick={() => {
+              onNewSession();
+              setSidebarOpen(false);
+            }}
+            className="inline-flex items-center justify-center gap-3 rounded-xl bg-red-600 px-4 py-3 text-base font-bold text-white shadow-sm transition hover:bg-red-700"
+          >
+            <Plus className="h-5 w-5" />
+            New Session
+          </button>
+        </div>
 
         <nav className="mt-6 flex flex-1 flex-col gap-2">
           {navItems.map(({ icon: Icon, label, active }) => (
