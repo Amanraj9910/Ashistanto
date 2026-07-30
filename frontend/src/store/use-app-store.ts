@@ -35,7 +35,7 @@ const defaultUser: UserProfile = {
 const languageByAccent: Record<VoiceAccent, string> = {
   american: 'en-US',
   british: 'en-GB',
-  japanese: 'en-US'
+  japanese: 'ja-JP'
 };
 
 export const useAppStore = create<AppStore>()(

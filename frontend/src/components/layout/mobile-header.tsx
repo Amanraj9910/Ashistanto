@@ -1,15 +1,17 @@
 'use client';
 
-import { LogOut, Menu } from 'lucide-react';
+import { LogIn, LogOut, Menu } from 'lucide-react';
 import { useAppStore } from '@/store/use-app-store';
 import { BrandLogo } from './brand-logo';
 import { ThemeToggle } from './theme-toggle';
 
 type MobileHeaderProps = {
+  isSignedIn: boolean;
+  onLogin: () => void;
   onLogout: () => void;
 };
 
-export function MobileHeader({ onLogout }: MobileHeaderProps) {
+export function MobileHeader({ isSignedIn, onLogin, onLogout }: MobileHeaderProps) {
   const setSidebarOpen = useAppStore((state) => state.setSidebarOpen);
 
   return (
@@ -26,11 +28,11 @@ export function MobileHeader({ onLogout }: MobileHeaderProps) {
       <ThemeToggle />
       <button
         type="button"
-        onClick={onLogout}
+        onClick={isSignedIn ? onLogout : onLogin}
         className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
-        aria-label="Logout"
+        aria-label={isSignedIn ? 'Logout' : 'Login'}
       >
-        <LogOut className="h-5 w-5" />
+        {isSignedIn ? <LogOut className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}
       </button>
     </div>
   );

@@ -10,9 +10,9 @@ export function BrandLogo({ className, imageClassName, showText = true }: BrandL
   return (
     <div className={cn('flex items-center gap-3', className)}>
       <img
-        src="/img/Hosho DIgital-Logo.jpg"
+        src="/img/Hosho-Digital-Logo.png"
         alt="Ashistanto"
-        className={cn('h-10 w-auto object-contain', imageClassName)}
+        className={cn('h-7 w-auto max-w-[130px] object-contain', imageClassName)}
       />
       {showText && <span className="sr-only">ASHISTANTO</span>}
     </div>

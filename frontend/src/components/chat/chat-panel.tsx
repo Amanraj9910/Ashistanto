@@ -1,13 +1,22 @@
 'use client';
 
 import { useMutation } from '@tanstack/react-query';
-import { Mic, Send, Square, StopCircle } from 'lucide-react';
+import { BriefcaseBusiness, FileText, LogIn, Mic, ReceiptText, Send, Square, StopCircle } from 'lucide-react';
 import { FormEvent, useEffect, useRef, useState } from 'react';
 import { clearConversation, confirmAction, processVoiceMessage, sendTextMessage } from '@/lib/api';
 import { cleanAssistantText, cn } from '@/lib/utils';
 import { useAppStore } from '@/store/use-app-store';
 import type { ActionPreview, VoiceAccent } from '@/types';
 import { ActionPreviewCard } from './action-preview-card';
+
+const professionalGreetings = [
+  'How may I assist you today?',
+  'What can I help you accomplish?',
+  'How can I support your work today?',
+  'What would you like to take care of?',
+  'How can I make your day more efficient?',
+  'Which task should we handle first?'
+];
 
 const accentOptions: Array<{ value: VoiceAccent; label: string; language: string }> = [
   { value: 'american', label: 'American', language: 'en-US' },
@@ -31,7 +40,27 @@ function parseAssistantResponse(response: string): { message: string; action?: A
   return { message: cleanAssistantText(response) };
 }
 
-export function ChatPanel({ configured }: { configured: boolean }) {
+function TypingDots() {
+  return (
+    <div className="flex items-center gap-1 px-4 py-3">
+      {[0, 1, 2].map((i) => (
+        <span
+          key={i}
+          className="h-1.5 w-1.5 rounded-full bg-slate-400 dark:bg-slate-500"
+          style={{ animation: `dot-pulse 1.2s ease-in-out ${i * 0.15}s infinite` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+type ChatPanelProps = {
+  configured: boolean;
+  isSignedIn: boolean;
+  onLogin: () => void;
+};
+
+export function ChatPanel({ configured, isSignedIn, onLogin }: ChatPanelProps) {
   const sessionId = useAppStore((state) => state.sessionId);
   const user = useAppStore((state) => state.user);
   const messages = useAppStore((state) => state.messages);
@@ -47,6 +76,7 @@ export function ChatPanel({ configured }: { configured: boolean }) {
   const [error, setError] = useState('');
   const [isRecording, setIsRecording] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [emptyGreeting, setEmptyGreeting] = useState(professionalGreetings[0]);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -101,7 +131,14 @@ export function ChatPanel({ configured }: { configured: boolean }) {
     }
   });
 
-  const isProcessing = textMutation.isPending || voiceMutation.isPending || actionMutation.isPending;
+  const isProcessing = textMutation.isPending || voiceMutation.isPending || actionMutation.isPending;  useEffect(() => {
+    const storageKey = 'ashistanto-greeting-index';
+    const previous = Number.parseInt(localStorage.getItem(storageKey) || '-1', 10);
+    const next = Number.isFinite(previous) ? (previous + 1) % professionalGreetings.length : 0;
+    localStorage.setItem(storageKey, String(next));
+    setEmptyGreeting(professionalGreetings[next]);
+  }, []);
+
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -110,6 +147,11 @@ export function ChatPanel({ configured }: { configured: boolean }) {
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = input.trim();
+
+    if (!isSignedIn) {
+      onLogin();
+      return;
+    }
 
     if (!text || !sessionId || isProcessing) return;
 
@@ -144,6 +186,11 @@ export function ChatPanel({ configured }: { configured: boolean }) {
   }
 
   async function startRecording() {
+    if (!isSignedIn) {
+      setError('Sign in to use voice recording.');
+      return;
+    }
+
     if (!sessionId || isProcessing || !navigator.mediaDevices?.getUserMedia) {
       setError('Microphone recording is not available in this browser.');
       return;
@@ -214,26 +261,33 @@ export function ChatPanel({ configured }: { configured: boolean }) {
   }
 
   return (
-    <aside className="flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 xl:h-[calc(100vh-156px)]">
-      <div className="flex items-center justify-between border-b border-slate-200 bg-white px-5 py-4 dark:border-slate-800 dark:bg-slate-950">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-md border border-slate-200 bg-white dark:border-slate-800">
-            <img src="/img/Hosho DIgital-Logo.jpg" alt="Ashistanto AI" className="h-full w-full object-cover" />
+    <aside className="dashboard-chat-panel flex min-h-[640px] flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950 xl:h-[calc(100vh-156px)]">
+      {/* ─── Header ─── */}
+      <div className="chat-panel-header flex items-center justify-between border-b border-slate-100 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-950">
+        <div className="flex items-center gap-2.5">
+          <div className="flex h-8 w-8 items-center justify-center">
+            <img src="/img/Ashistanto-Red-Logo-1-transparent.png" alt="Ashistanto" className="h-full w-full object-contain" />
           </div>
           <div>
-            <div className="text-base font-extrabold text-slate-950 dark:text-white">ASHISTANTO AI</div>
-            <div className="text-xs font-extrabold uppercase tracking-wide text-orange-500">
-              {isProcessing ? 'Processing' : isRecording ? 'Listening' : 'Online'}
+            <div className="text-sm font-semibold text-slate-900 dark:text-white">Ashistanto</div>
+            <div className={cn(
+              'text-[11px] font-medium',
+              !isSignedIn ? 'text-slate-400' :
+              isProcessing ? 'text-amber-500' :
+              isRecording ? 'text-red-500' :
+              'text-emerald-500'
+            )}>
+              {!isSignedIn ? 'Preview' : isProcessing ? 'Thinking…' : isRecording ? 'Listening…' : 'Online'}
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {messages.length > 0 && (
             <button
               type="button"
               onClick={handleClear}
-              className="rounded-full border border-slate-200 px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-300 dark:hover:bg-slate-900"
+              className="rounded-md border border-slate-200 px-2.5 py-1.5 text-[11px] font-medium text-slate-500 hover:bg-slate-50 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-900"
             >
               Clear
             </button>
@@ -241,7 +295,7 @@ export function ChatPanel({ configured }: { configured: boolean }) {
           <select
             value={accent}
             onChange={(event) => setAccent(event.target.value as VoiceAccent)}
-            className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-600 outline-none dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300"
+            className="chat-accent-select rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-500 outline-none dark:border-slate-800 dark:bg-slate-950 dark:text-slate-400"
           >
             {accentOptions.map((option) => (
               <option key={option.value} value={option.value}>
@@ -252,48 +306,55 @@ export function ChatPanel({ configured }: { configured: boolean }) {
         </div>
       </div>
 
-      <div className="flex-1 space-y-5 overflow-y-auto bg-slate-50 px-4 py-5 dark:bg-slate-900/70">
-        <div className="flex justify-center">
-          <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-            Today
-          </span>
-        </div>
-
-        {messages.length === 0 && (
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white dark:border-slate-800">
-              <img src="/img/Hosho DIgital-Logo.jpg" alt="Ashistanto AI" className="h-full w-full object-cover" />
-            </div>
-            <div className="max-w-[280px] rounded-br-2xl rounded-tr-2xl rounded-bl-2xl border border-slate-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
-              Good morning. I can help with Microsoft 365 workflows, scheduling, email, Teams messages, files, and operational requests.
+      {/* ─── Messages ─── */}
+      <div className={cn('flex-1 space-y-4 bg-slate-50 px-4 py-4 dark:bg-slate-900/50', messages.length === 0 ? 'overflow-hidden' : 'overflow-y-auto') }>{messages.length === 0 ? (
+          <div className="chat-empty-state">
+            <div className="chat-empty-logo"><img src="/img/Ashistanto-Red-Logo-1-transparent.png" alt="Ashistanto" /></div>
+            <p className="chat-empty-greeting">Hi, there <span>👋</span></p>
+            <h1>{emptyGreeting}</h1>
+            <div className="chat-suggestions">
+              {[
+  { prompt: 'Help me prepare a leave request', icon: BriefcaseBusiness, tone: 'blue' },
+  { prompt: 'Write an expense report', icon: ReceiptText, tone: 'pink' },
+  { prompt: 'Draft a meeting summary', icon: FileText, tone: 'amber' }
+].map(({ prompt, icon: Icon, tone }) => (
+  <button key={prompt} type="button" onClick={() => setInput(prompt)} className={'chat-suggestion-card ' + tone}>
+    <span className="chat-suggestion-icon"><Icon className="h-4 w-4" /></span>
+    <span>{prompt}</span>
+  </button>
+))}
             </div>
           </div>
+        ) : (
+          <div className="flex justify-center"><span className="rounded-full bg-slate-200/70 px-3 py-1 text-[11px] font-medium text-slate-500">Today</span></div>
         )}
 
         {messages.map((message) => (
-          <div key={message.id} className="space-y-4">
-            <div className="flex items-start justify-end gap-3">
-              <div className="max-w-[280px] whitespace-pre-wrap rounded-bl-2xl rounded-tl-2xl rounded-tr-2xl bg-[#0d2740] px-4 py-3 text-sm leading-6 text-white shadow-sm dark:bg-red-700">
+          <div key={message.id} className="space-y-3">
+            {/* User bubble */}
+            <div className="flex items-start justify-end gap-2.5">
+              <div className="max-w-[260px] whitespace-pre-wrap rounded-2xl rounded-tr-sm bg-slate-900 px-3.5 py-2.5 text-sm leading-relaxed text-white shadow-sm dark:bg-red-700">
                 {message.user}
               </div>
               {user.photoUrl ? (
                 <img
                   src={user.photoUrl}
                   alt={`${user.firstName} profile`}
-                  className="h-8 w-8 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-700"
+                  className="h-7 w-7 shrink-0 rounded-full border border-slate-200 object-cover dark:border-slate-700"
                 />
               ) : (
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-extrabold text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-white text-xs font-semibold text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
                   {user.firstName.charAt(0).toUpperCase()}
                 </div>
               )}
             </div>
 
-            <div className="flex items-start gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white dark:border-slate-800">
-                <img src="/img/Hosho DIgital-Logo.jpg" alt="Ashistanto AI" className="h-full w-full object-cover" />
+            {/* Assistant bubble */}
+            <div className="flex items-start gap-2.5">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center">
+                <img src="/img/Ashistanto-Red-Logo-1-transparent.png" alt="Ashistanto" className="h-full w-full object-contain" />
               </div>
-              <div className="max-w-[300px] whitespace-pre-wrap rounded-br-2xl rounded-tr-2xl rounded-bl-2xl border border-slate-100 bg-white px-4 py-3 text-sm leading-6 text-slate-800 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-100">
+              <div className="max-w-[280px] whitespace-pre-wrap rounded-2xl rounded-tl-sm border border-slate-100 bg-white px-3.5 py-2.5 text-sm leading-relaxed text-slate-700 shadow-sm dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200">
                 {cleanAssistantText(message.assistant)}
               </div>
             </div>
@@ -301,11 +362,11 @@ export function ChatPanel({ configured }: { configured: boolean }) {
         ))}
 
         {pendingAction && (
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white dark:border-slate-800">
-              <img src="/img/Hosho DIgital-Logo.jpg" alt="Ashistanto AI" className="h-full w-full object-cover" />
+          <div className="flex items-start gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center">
+              <img src="/img/Ashistanto-Red-Logo-1-transparent.png" alt="Ashistanto" className="h-full w-full object-contain" />
             </div>
-            <div className="w-full max-w-[320px]">
+            <div className="w-full max-w-[300px]">
               <ActionPreviewCard
                 action={pendingAction}
                 isSubmitting={actionMutation.isPending}
@@ -332,12 +393,12 @@ export function ChatPanel({ configured }: { configured: boolean }) {
         )}
 
         {isProcessing && (
-          <div className="flex items-start gap-3">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white dark:border-slate-800">
-              <img src="/img/Hosho DIgital-Logo.jpg" alt="Ashistanto AI" className="h-full w-full object-cover" />
+          <div className="flex items-start gap-2.5">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center">
+              <img src="/img/Ashistanto-Red-Logo-1-transparent.png" alt="Ashistanto" className="h-full w-full object-contain" />
             </div>
-            <div className="rounded-br-2xl rounded-tr-2xl rounded-bl-2xl bg-white px-4 py-3 text-sm font-semibold text-slate-500 shadow-sm dark:bg-slate-950 dark:text-slate-300">
-              Processing request...
+            <div className="rounded-2xl rounded-tl-sm border border-slate-100 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-950">
+              <TypingDots />
             </div>
           </div>
         )}
@@ -345,59 +406,83 @@ export function ChatPanel({ configured }: { configured: boolean }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {error && <div className="border-t border-red-100 bg-red-50 px-4 py-2 text-xs font-semibold text-red-700 dark:border-red-950 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
+      {error && <div className="border-t border-red-100 bg-red-50 px-4 py-2 text-xs font-medium text-red-700 dark:border-red-950 dark:bg-red-950/40 dark:text-red-300">{error}</div>}
 
-      <form onSubmit={handleSubmit} className="border-t border-slate-200 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
-        <div className="flex items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 shadow-[inset_0_2px_4px_rgba(15,23,42,.05)] dark:border-slate-800 dark:bg-slate-900">
+      {/* ─── Input area ─── */}
+      {!isSignedIn ? (
+        <div className="border-t border-slate-100 bg-white p-4 dark:border-slate-800 dark:bg-slate-950">
+          <div className="chat-voice-preview">
+            <button type="button" onClick={onLogin} className="chat-preview-mic" aria-label="Sign in to use microphone"><Mic className="h-5 w-5" /></button>
+            <div><strong>AI conversation</strong><span>Voice input ready</span></div>
+            <select value={accent} onChange={(event) => setAccent(event.target.value as VoiceAccent)} aria-label="Voice language">
+              {accentOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            </select>
+          </div>
           <button
             type="button"
-            onClick={isRecording ? stopRecording : startRecording}
-            disabled={isProcessing || !configured}
-            className={cn(
-              'rounded-md p-2 transition disabled:cursor-not-allowed disabled:opacity-50',
-              isRecording ? 'bg-red-600 text-white' : 'text-slate-500 hover:bg-white dark:text-slate-300 dark:hover:bg-slate-800'
-            )}
-            aria-label={isRecording ? 'Stop recording' : 'Start recording'}
+            onClick={onLogin}
+            className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700"
           >
-            {isRecording ? <Square className="h-5 w-5 fill-current" /> : <Mic className="h-5 w-5" />}
+            <LogIn className="h-4 w-4" />
+            Sign in to use Ashistanto
           </button>
-
-          <textarea
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && !event.shiftKey) {
-                event.preventDefault();
-                event.currentTarget.form?.requestSubmit();
-              }
-            }}
-            placeholder={isRecording ? 'Listening...' : 'Type a command or ask a question...'}
-            disabled={isProcessing || !configured}
-            rows={1}
-            className="max-h-28 min-h-[42px] min-w-0 flex-1 resize-none bg-transparent py-2 text-sm leading-6 text-slate-800 outline-none placeholder:text-slate-500 disabled:cursor-not-allowed dark:text-slate-100 dark:placeholder:text-slate-500"
-          />
-
-          {isSpeaking && (
+          <p className="mt-2.5 text-center text-[11px] leading-4 text-slate-400 dark:text-slate-500">
+            Chat and voice are available after signing in with Microsoft.
+          </p>
+        </div>
+      ) : (
+        <form onSubmit={handleSubmit} className="border-t border-slate-100 bg-white p-3 dark:border-slate-800 dark:bg-slate-950">
+          <div className="flex items-end gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 dark:border-slate-800 dark:bg-slate-900">
             <button
               type="button"
-              onClick={stopSpeaking}
-              className="inline-flex items-center gap-1 rounded-md border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-bold text-orange-700 dark:border-orange-950 dark:bg-orange-950/40 dark:text-orange-300"
+              onClick={isRecording ? stopRecording : startRecording}
+              disabled={isProcessing || !configured}
+              className={cn(
+                'rounded-md p-2 transition disabled:cursor-not-allowed disabled:opacity-50',
+                isRecording ? 'bg-red-600 text-white' : 'text-slate-400 hover:bg-white dark:text-slate-500 dark:hover:bg-slate-800'
+              )}
+              aria-label={isRecording ? 'Stop recording' : 'Start recording'}
             >
-              <StopCircle className="h-4 w-4" />
-              Stop
+              {isRecording ? <Square className="h-4 w-4 fill-current" /> : <Mic className="h-4 w-4" />}
             </button>
-          )}
 
-          <button
-            type="submit"
-            disabled={isProcessing || !configured || !input.trim()}
-            className="rounded-md bg-red-600 p-3 text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-            aria-label="Send message"
-          >
-            <Send className="h-5 w-5" />
-          </button>
-        </div>
-      </form>
+            <textarea
+              value={input}
+              onChange={(event) => setInput(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                  event.preventDefault();
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }}
+              placeholder={isRecording ? 'Listening…' : 'Type a message…'}
+              disabled={isProcessing || !configured}
+              rows={1}
+              className="max-h-28 min-h-[38px] min-w-0 flex-1 resize-none bg-transparent py-2 text-sm leading-relaxed text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed dark:text-slate-100 dark:placeholder:text-slate-500"
+            />
+
+            {isSpeaking && (
+              <button
+                type="button"
+                onClick={stopSpeaking}
+                className="inline-flex items-center gap-1 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
+              >
+                <StopCircle className="h-3.5 w-3.5" />
+                Stop
+              </button>
+            )}
+
+            <button
+              type="submit"
+              disabled={isProcessing || !configured || !input.trim()}
+              className="rounded-md bg-red-600 p-2.5 text-white shadow-sm transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              aria-label="Send message"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
+        </form>
+      )}
 
       <audio ref={audioRef} className="hidden" onEnded={() => setIsSpeaking(false)} />
     </aside>
