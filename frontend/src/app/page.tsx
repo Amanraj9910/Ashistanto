@@ -50,7 +50,7 @@ const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
         setSession(null);
         setUser(previewUser);
         clearMessages();
-        if (!cancelled) setReady(true);
+        if (!cancelled) router.replace('/login');
         return;
       }
 
@@ -59,7 +59,7 @@ const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
         setSession(null);
         setUser(previewUser);
         clearMessages();
-        if (!cancelled) setReady(true);
+        if (!cancelled) router.replace('/login');
         return;
       }
 
@@ -79,7 +79,7 @@ const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
     return () => {
       cancelled = true;
     };
-  }, [clearMessages, sessionId, setSession, setUser]);
+  }, [clearMessages, router, sessionId, setSession, setUser]);
 
   const configQuery = useQuery({
     queryKey: ['config'],
@@ -120,11 +120,18 @@ const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
   }
 
   async function handleLogout() {
-    await logoutSession(sessionId);
+    const activeSession = sessionId;
     setSession(null);
     clearMessages();
     setUser(previewUser);
-    router.push('/login');
+    localStorage.removeItem('userSessionId');
+    router.replace('/login');
+
+    try {
+      await logoutSession(activeSession);
+    } catch {
+      // The local session is already cleared; backend cleanup can fail safely.
+    }
   }
 
   function handleNewSession() {
