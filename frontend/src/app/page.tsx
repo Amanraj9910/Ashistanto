@@ -79,7 +79,7 @@ const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
     return () => {
       cancelled = true;
     };
-  }, [clearMessages, router, sessionId, setSession, setUser]);
+  }, [clearMessages, sessionId, setSession, setUser]);
 
   const configQuery = useQuery({
     queryKey: ['config'],
