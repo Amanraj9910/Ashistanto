@@ -165,7 +165,7 @@ const [sidebarCollapsed, setSidebarCollapsed] = useState(true);
           onNavigate={setActiveSection}
         />
 
-        <main className="dashboard-main min-w-0 bg-slate-50 dark:bg-slate-950">
+        <main className={`dashboard-main min-w-0 bg-slate-50 dark:bg-slate-950 ${sidebarCollapsed ? '' : 'sidebar-expanded'}`}> 
           <header className="conversation-topbar">
   <MobileHeader isSignedIn={isSignedIn} onLogin={handleLogin} onLogout={handleLogout} />
   <div className="conversation-controls">

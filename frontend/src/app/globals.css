@@ -547,3 +547,8 @@ select {
 .settings-stage .workspace-view { padding: clamp(2rem, 6vw, 5rem) 1rem 3rem; }
 .settings-stage .workspace-heading { max-width: 820px; margin: 0 auto 1.5rem; }
 .settings-stage .settings-card { max-width: 820px; margin: 0 auto; }
+
+/* Keep the workspace clear of the fixed navigation rail. */
+.dashboard-main { margin-left: 64px; transition: margin-left 220ms ease; }
+.dashboard-main.sidebar-expanded { margin-left: 300px; }
+@media (max-width: 1023px) { .dashboard-main, .dashboard-main.sidebar-expanded { margin-left: 0; } }
