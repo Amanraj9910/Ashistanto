@@ -11,7 +11,8 @@ import type {
 import { mockConfig, mockProcessVoice, mockSendTextMessage, mockUser } from './mock-data';
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_URL?.replace(/\/$/, '') || '';
-const enableMocks = process.env.NEXT_PUBLIC_ENABLE_MOCKS === 'true';
+// Frontend deployments are self-contained by default. Set this explicitly to false only when a public backend is ready.
+const enableMocks = process.env.NEXT_PUBLIC_ENABLE_MOCKS !== 'false';
 
 export function shouldUseMocks() {
   return enableMocks && !apiBaseUrl;
