@@ -26,3 +26,12 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+# Next.js frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+# The repo ignores lockfiles globally (line 8), but the frontend build needs a committed
+# lockfile: CI does `checkout` then `docker build`, and `npm ci` has no lockfile otherwise.
+# Pinning it also keeps the shipped static bundle reproducible.
+!frontend/package-lock.json
+Kode Final/

@@ -16,6 +16,20 @@ COPY package*.json ./
 # Install dependencies (production only)
 RUN npm install --omit=dev
 
+# Frontend build stage
+# The UI is a Next.js static export served by Express from the same origin. NEXT_PUBLIC_* values
+# are INLINED INTO THE BUNDLE AT BUILD TIME -- passing them via `docker run -e` has no effect.
+FROM node:20-bookworm AS ui
+WORKDIR /app/frontend
+COPY frontend/package*.json ./
+RUN npm ci
+COPY frontend/ ./
+# Must be "false": lib/api.ts treats anything else as mocks-on and would ship fake data.
+ENV NEXT_PUBLIC_ENABLE_MOCKS=false
+# Must be empty so every fetch is same-origin relative.
+ENV NEXT_PUBLIC_API_URL=""
+RUN npm run build
+
 # Production stage
 FROM node:20-bookworm
 
@@ -43,6 +57,8 @@ COPY timezone-helper.js .
 COPY action-preview.js .
 COPY storage.js .
 COPY public/ ./public/
+# Built UI (index.html, login/, chat/, auth/success/, _next/, img/, official/, 404.html)
+COPY --from=ui /app/frontend/out ./frontend/out
 
 # Create working directory with proper ownership for node user
 RUN chown -R node:node /app
@@ -70,7 +86,7 @@ ENV DOCKER_ENV=true
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:3000/api/config || exit 1
+    CMD curl -f http://localhost:3000/api/config && curl -f -o /dev/null http://localhost:3000/ || exit 1
 
 # Start application
 CMD ["node", "server.js"]

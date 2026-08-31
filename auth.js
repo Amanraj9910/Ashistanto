@@ -34,7 +34,7 @@ router.get('/logout', async (req, res) => {
   }
   
   // Redirect to login page
-  res.redirect('/login.html');
+  res.redirect('/login/');
 });
 
 // Alternative route for /redirect (alias for /login)
@@ -76,118 +76,11 @@ router.get('/callback', async (req, res) => {
 });
 
 // Step 3: Confirmation page with auto-redirect
-router.get('/success', async (req, res) => {
-  const sessionId = req.query.sessionId;
-  const sessionData = sessionId ? await userTokenStore.get(sessionId) : null;
-
-  if (!sessionData) return res.send('No active session. Please try logging in again.');
-
-  res.send(`
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Login Successful - Ashistanto</title>
-      <link rel="icon" href="/img/favicon.ico.png" type="image/png">
-      <script src="https://cdn.tailwindcss.com"></script>
-      <style>
-        @keyframes checkmark {
-          0% { transform: scale(0) rotate(45deg); }
-          50% { transform: scale(1.2) rotate(45deg); }
-          100% { transform: scale(1) rotate(45deg); }
-        }
-        
-        @keyframes fadeIn {
-          from { opacity: 0; transform: translateY(20px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        
-        .checkmark-circle {
-          animation: fadeIn 0.5s ease-out;
-        }
-        
-        .checkmark {
-          animation: checkmark 0.6s ease-out 0.3s both;
-        }
-        
-        .fade-in {
-          animation: fadeIn 0.8s ease-out 0.5s both;
-        }
-      </style>
-    </head>
-    <body class="min-h-screen bg-gradient-to-br from-gray-50 via-gray-100 to-gray-200">
-      <!-- Background decorative elements -->
-      <div class="fixed inset-0 overflow-hidden pointer-events-none">
-        <div class="absolute top-20 left-10 w-72 h-72 bg-red-200 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse"></div>
-        <div class="absolute top-40 right-10 w-72 h-72 bg-red-300 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse" style="animation-delay: 2s;"></div>
-        <div class="absolute bottom-20 left-1/2 w-72 h-72 bg-red-400 rounded-full mix-blend-multiply filter blur-xl opacity-20 animate-pulse" style="animation-delay: 4s;"></div>
-      </div>
-
-      <div class="relative min-h-screen flex items-center justify-center px-4">
-        <div class="max-w-md w-full">
-          <!-- Success card -->
-          <div class="bg-white rounded-2xl shadow-2xl p-8 backdrop-blur-sm bg-opacity-95 text-center">
-            <!-- Success checkmark -->
-            <div class="checkmark-circle mb-6">
-              <div class="w-24 h-24 mx-auto bg-gradient-to-br from-green-400 to-green-600 rounded-full flex items-center justify-center shadow-lg">
-                <svg class="checkmark w-12 h-12 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>
-                </svg>
-              </div>
-            </div>
-
-            <!-- Success message -->
-            <div class="fade-in">
-              <h2 class="text-3xl font-bold text-gray-800 mb-3">Login Successful!</h2>
-              <p class="text-gray-600 mb-2">Welcome back,</p>
-              <p class="text-lg font-semibold text-transparent bg-clip-text bg-gradient-to-r from-red-500 to-red-600 mb-6">
-                ${sessionData.email}
-              </p>
-
-              <!-- Loading indicator -->
-              <div class="flex items-center justify-center gap-2 text-gray-500 mb-4">
-                <svg class="animate-spin h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-                  <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-                <span class="text-sm">Redirecting to your dashboard...</span>
-              </div>
-
-              <!-- Progress bar -->
-              <div class="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
-                <div class="bg-gradient-to-r from-red-500 to-red-600 h-2 rounded-full transition-all duration-2000" style="width: 0%; animation: progress 2s ease-out forwards;"></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Footer -->
-          <div class="text-center mt-6 text-gray-600 text-sm fade-in">
-            <p>🔒 Secure session established</p>
-          </div>
-        </div>
-      </div>
-
-      <style>
-        @keyframes progress {
-          from { width: 0%; }
-          to { width: 100%; }
-        }
-      </style>
-
-      <script>
-        // Store session ID in localStorage
-        localStorage.setItem('userSessionId', '${sessionId}');
-        
-        // Redirect to home page after 2 seconds
-        setTimeout(() => {
-          window.location.href = '/';
-        }, 2000);
-      </script>
-    </body>
-    </html>
-  `);
-});
+// NOTE: /auth/success is intentionally NOT handled here.
+// It is served by the Next.js static export at frontend/out/auth/success/index.html, which
+// reads ?sessionId= client-side and stores it. The /callback above redirects there.
+// Do not re-add a route for it: express.static is mounted before this router in server.js,
+// so a duplicate would be silently shadowed and become confusing dead code.
 
 router.get('/user', async (req, res) => {
   const sessionId = req.query.sessionId;
