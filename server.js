@@ -579,6 +579,19 @@ ${contextSummary || 'No prior context.'}
 (Use the above facts to inform your current responses seamlessly).
 
 ================================================================================
+👤 RECIPIENT RULE — NEVER GUESS WHO THE USER MEANT
+================================================================================
+When a tool result comes back with "needsDisambiguation": true, the contact lookup was not
+certain. You MUST:
+  - Relay the result's "message" to the user, listing the candidates exactly as given.
+  - ASK which person they meant. Do NOT choose one yourself, and do NOT retry the tool with
+    the same name.
+  - Wait for the user's answer, then call the tool again using the full name or email address
+    they picked. That resolves to a single match and proceeds normally.
+When a tool result comes back with "notFound": true, tell the user nobody matched and ask for a
+full name or email address. Never invent an address or substitute a similar-looking person.
+
+================================================================================
 📅 MEETING RULE — DEFAULT TO TEAMS MEETING
 ================================================================================
 When the user schedules ANY meeting, ALWAYS set:
@@ -1054,40 +1067,42 @@ app.post('/api/confirm-action', async (req, res) => {
       try {
         let result;
         if (actionType === 'send_email') {
-          result = await executeTool('send_email', {
-            recipient_name: actionData.recipientName,
-            subject: actionData.subject,
-            body: actionData.body,
-            cc_recipients: actionData.ccRecipients || []
-          }, userToken, sessionId, true);  // skipConfirmation = true
-
-          // ✅ OPTIMIZATION: Pass cached data directly to sendEmail
+          // Exactly ONE send path must run. These used to run in sequence -- executeTool sent the
+          // mail, then the "optimization" below sent it a second time whenever the preview step
+          // had cached a recipient lookup (i.e. on every normal send). Hence duplicate emails.
           if (validatedRecipientData) {
-            const graphTools = require('./graph-tools');
+            // Fast path: the recipient was already resolved while building the preview.
             result = await graphTools.sendEmail(
               actionData.recipientName,
               actionData.subject,
               actionData.body,
               actionData.ccRecipients || [],
               userToken,
-              validatedRecipientData  // Pass cached data
+              validatedRecipientData
             );
+          } else {
+            // Slow path: no cached lookup, so let the tool resolve the contact itself.
+            result = await executeTool('send_email', {
+              recipient_name: actionData.recipientName,
+              subject: actionData.subject,
+              body: actionData.body,
+              cc_recipients: actionData.ccRecipients || []
+            }, userToken, sessionId, true);  // skipConfirmation = true
           }
         } else if (actionType === 'send_teams_message') {
-          result = await executeTool('send_teams_message', {
-            recipient_name: actionData.recipientName,
-            message: actionData.message
-          }, userToken, sessionId, true);  // skipConfirmation = true
-
-          // ✅ OPTIMIZATION: Pass cached data directly to sendTeamsMessage
+          // One send path only -- see the send_email note above; this had the same double-send.
           if (validatedRecipientData) {
-            const graphTools = require('./graph-tools');
             result = await graphTools.sendTeamsMessage(
               actionData.recipientName,
               actionData.message,
               userToken,
-              validatedRecipientData  // Pass cached data
+              validatedRecipientData
             );
+          } else {
+            result = await executeTool('send_teams_message', {
+              recipient_name: actionData.recipientName,
+              message: actionData.message
+            }, userToken, sessionId, true);  // skipConfirmation = true
           }
         } else if (actionType === 'delete_sent_email') {
           // Execute deletion with cached message ID

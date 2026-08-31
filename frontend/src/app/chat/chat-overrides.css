@@ -89,3 +89,74 @@
 
 /* Per-message timestamp, as the previous UI showed under each bubble. */
 .pdf-msg-time{display:block;margin-top:5px;font-size:8px;font-weight:600;letter-spacing:.04em;color:#9aa8b2}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   LEGIBILITY PASS
+   The sheet above is built on a 7-11px type scale, which is why the whole screen
+   reads as "small". This block only adjusts size, spacing and hit targets - no
+   colours, no layout changes, no new components. Revert this block alone to undo.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Sidebar: wider so conversation titles stop truncating mid-word. */
+.pdf-chat-sidebar{width:226px!important;padding:18px 14px!important}
+.pdf-chat-sidebar>*{min-width:198px}
+.pdf-new-chat{padding:11px 12px;font-size:12px}
+.pdf-recent-label{font-size:9.5px!important;letter-spacing:.09em}
+.pdf-recent-item{padding:8px 9px}
+.pdf-recent-item span{font-size:12px}
+.pdf-recent-item small{font-size:10px;margin-top:3px}
+.pdf-side-user{font-size:9.5px}
+.pdf-side-user small{font-size:11px}
+.pdf-user-avatar{width:30px;height:30px;font-size:12px}
+
+/* Messages: the main readability win. */
+.pdf-message{font-size:13.5px;line-height:1.55;max-width:560px;padding:11px 14px}
+.pdf-chat-row{gap:11px}
+.pdf-chat-row img{width:27px;height:27px}
+.pdf-user-dot{width:26px;height:26px;font-size:11px;margin-top:4px}
+.pdf-today{font-size:10px;margin-bottom:26px}
+.pdf-conversation{padding:38px 7% 165px!important}
+
+/* Composer: taller, with type that matches the messages. */
+.pdf-composer-inner{height:58px;padding:0 9px 0 17px}
+.pdf-composer-inner textarea{font-size:13.5px;padding:10px 0;max-height:92px}
+.pdf-composer-mic{width:38px;height:38px}
+.pdf-composer-hint{font-size:10.5px}
+
+/* Idle hero. */
+.pdf-idle-view h1{font-size:27px!important}
+.pdf-idle-view>p{font-size:13px}
+.pdf-prompt-grid{grid-template-columns:repeat(3,172px)!important;gap:13px}
+.pdf-prompt-grid button{height:94px;padding:15px;font-size:12px;line-height:1.4}
+
+/* Voice + status text. */
+.pdf-voice-view h2{font-size:17px}
+.pdf-voice-view>p{font-size:12px}
+.pdf-transcript-note p{font-size:12.5px;line-height:1.5}
+.pdf-transcript-note span{font-size:9.5px}
+.pdf-countdown{font-size:11.5px;padding:5px 12px}
+.pdf-voice-controls{font-size:11.5px}
+.pdf-voice-controls select,.pdf-voice-controls button{font-size:11.5px;padding:7px 11px}
+.pdf-thinking-card h2{font-size:16px}
+.pdf-thinking-card p{font-size:12px}
+
+/* Action / email card. */
+.pdf-email-card{max-width:560px}
+.pdf-email-head span{font-size:10px;letter-spacing:.07em}
+.pdf-email-card p b{font-size:9.5px;letter-spacing:.07em}
+.pdf-email-field{font-size:12.5px;padding:7px 9px}
+.pdf-email-body{font-size:12.5px;line-height:1.55;padding:10px;min-height:104px}
+.pdf-email-actions button{font-size:11.5px;padding:8px 14px}
+.pdf-email-sent-status{font-size:11px}
+
+/* Chrome. */
+.pdf-chat-topbar select{font-size:11.5px;padding:6px 9px}
+.pdf-error-bar{font-size:11.5px;padding:10px 14px;bottom:94px}
+.pdf-error-bar.is-voice{bottom:72px}
+.pdf-stop-speaking{font-size:10.5px;padding:6px 10px}
+
+@media (max-width:860px){
+  .pdf-prompt-grid{grid-template-columns:1fr!important}
+  .pdf-message{max-width:none}
+  .pdf-conversation{padding:28px 5% 165px!important}
+}

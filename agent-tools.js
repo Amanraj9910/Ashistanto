@@ -1,4 +1,5 @@
 const graphTools = require('./graph-tools');
+const { resolveRecipientMatch, buildDisambiguationResult } = require('./contact-resolver');
 const actionPreview = require('./action-preview');
 
 // =========================
@@ -440,11 +441,18 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
           };
         }
 
-        // ✅ User found - cache the validated data
+        // "found" is not "certain": only act on an unambiguous match, otherwise ask.
+        const resolved = resolveRecipientMatch(args.recipient_name, searchResult.results);
+        if (resolved.status !== 'exact') {
+          console.log(`  ❓ Ambiguous recipient "${args.recipient_name}" - ${resolved.candidates.length} candidate(s); asking the user`);
+          return buildDisambiguationResult('send the email', args.recipient_name, resolved.candidates);
+        }
+
+        // ✅ Single confident match - cache it for the confirm step.
         validatedRecipientData = {
-          recipientName: searchResult.results[0].name,
-          recipientEmail: searchResult.results[0].email,
-          source: searchResult.results[0].source
+          recipientName: resolved.match.name,
+          recipientEmail: resolved.match.email,
+          source: resolved.match.source
         };
         console.log(`  ✅ Recipient validated: ${validatedRecipientData.recipientEmail}`);
 
@@ -469,11 +477,18 @@ async function executeTool(functionName, args = {}, userToken = null, sessionId 
           };
         }
 
-        // ✅ User found - cache the validated data
+        // "found" is not "certain": only act on an unambiguous match, otherwise ask.
+        const resolved = resolveRecipientMatch(args.recipient_name, searchResult.results);
+        if (resolved.status !== 'exact') {
+          console.log(`  ❓ Ambiguous recipient "${args.recipient_name}" - ${resolved.candidates.length} candidate(s); asking the user`);
+          return buildDisambiguationResult('send the message', args.recipient_name, resolved.candidates);
+        }
+
+        // ✅ Single confident match - cache it for the confirm step.
         validatedRecipientData = {
-          recipientName: searchResult.results[0].name,
-          recipientEmail: searchResult.results[0].email,
-          source: searchResult.results[0].source
+          recipientName: resolved.match.name,
+          recipientEmail: resolved.match.email,
+          source: resolved.match.source
         };
         console.log(`  ✅ Recipient validated: ${validatedRecipientData.recipientEmail}`);
 
