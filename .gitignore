@@ -26,3 +26,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+frontend/.next/
+frontend/out/
+Kode Final/
+frontend/tsconfig.tsbuildinfo/
