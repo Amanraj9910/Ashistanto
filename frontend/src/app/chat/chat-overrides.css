@@ -1,0 +1,91 @@
+.pdf-chat-sidebar{width:178px!important;padding:14px 12px!important;overflow:hidden}
+.pdf-chat-sidebar.collapsed{width:0!important;min-width:0!important;padding:0!important;border-right:0!important;overflow:hidden!important;visibility:visible!important}
+.pdf-chat-sidebar.collapsed>*{opacity:0;transform:translateX(-8px);pointer-events:none;transition:opacity .18s ease,transform .22s ease}.pdf-chat-sidebar:not(.collapsed)>*{opacity:1;transform:translateX(0);transition:opacity .22s ease .05s,transform .22s ease .05s}
+.pdf-chat-sidebar{transition:width .3s cubic-bezier(.22,.61,.36,1),padding .3s cubic-bezier(.22,.61,.36,1)}.pdf-chat-sidebar>*{min-width:154px;flex-shrink:0;will-change:opacity,transform}.pdf-chat-sidebar.collapsed>.pdf-side-brand{transform:translateX(-14px);opacity:0}.pdf-chat-sidebar:not(.collapsed)>.pdf-side-brand{transform:translateX(0);opacity:1}
+.pdf-side-brand{height:32px!important;margin-bottom:20px!important}
+.pdf-side-brand img{width:24px!important;height:24px!important;object-fit:contain}
+.pdf-side-brand button{margin-right:2px}
+.pdf-new-chat{padding:10px 9px;font-size:10px}
+.pdf-new-chat,.pdf-side-brand button,.pdf-open-sidebar,.pdf-logout{cursor:pointer;transition:background .16s ease,border-color .16s ease,color .16s ease,transform .16s ease}.pdf-new-chat:hover{background:#fff4f4;border-color:#efbfc1;color:#d71920}.pdf-new-chat:active{transform:translateY(1px)}.pdf-side-brand button:hover,.pdf-open-sidebar:hover{background:#fff4f4!important;color:#c9141c}.pdf-logout:hover{background:#fff4f4;border-color:#efbfc1;color:#c9141c;transform:translateX(1px)}.pdf-new-chat:focus-visible,.pdf-side-brand button:focus-visible,.pdf-open-sidebar:focus-visible,.pdf-logout:focus-visible{outline:2px solid #e31b23;outline-offset:1px}
+.pdf-recent-label{margin-top:24px}
+.pdf-recent-list{gap:13px}
+.pdf-recent-item{display:block;width:100%;padding:6px 7px;text-align:left;border:1px solid transparent;background:transparent;color:#4c5964;cursor:pointer;border-radius:3px;transition:background .16s ease,border-color .16s ease,transform .16s ease}.pdf-recent-item span{display:block;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.pdf-recent-item small{display:block;font-size:8px;color:#9aa4ad;margin-top:4px}.pdf-recent-item:hover{background:#fff4f4;border-color:#f5d8d8;transform:translateX(2px)}.pdf-recent-item:focus-visible{outline:2px solid #e31b23;outline-offset:1px}
+.pdf-idle-view{padding-bottom:55px}
+.pdf-idle-view .pdf-bot-mark{width:68px;height:68px}.pdf-idle-view .pdf-bot-mark img{width:64px;height:64px}
+.pdf-idle-view h1{font-size:25px!important;font-weight:700}
+.pdf-prompt-grid{grid-template-columns:repeat(3,150px)!important}
+.pdf-prompt-grid button{height:86px;padding:13px;transition:border-color .18s ease,transform .18s ease,box-shadow .18s ease}
+.pdf-prompt-grid button:hover{box-shadow:0 10px 26px #15283b12}
+.pdf-chat-composer{width:min(670px,calc(100% - 48px))!important;bottom:23px!important}
+.pdf-open-sidebar{position:fixed;top:18px;left:14px;z-index:5;background:#fff!important;border:1px solid #edf0f3!important;padding:7px!important}
+.pdf-logout-floating{position:fixed;left:145px;bottom:18px;z-index:6;border:1px solid #edf0f3;background:#fff;color:#e31b23;padding:7px;cursor:pointer}.pdf-logout-floating:hover{background:#fff3f3}
+.pdf-voice-controls{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:18px;color:#77828b;font-size:9px}.pdf-voice-controls select{border:1px solid #edf0f3;background:#fff;padding:7px 11px;color:#6f7b84;font-size:9px}.pdf-voice-controls button{border:1px solid #edf0f3;background:#fff;padding:7px 12px;color:#6f7b84;font-size:9px;cursor:pointer}.pdf-voice-controls button:hover{border-color:#e31b23;color:#e31b23}
+.pdf-transcript-note{width:min(470px,calc(100% - 50px));margin-top:22px;padding:12px 16px;background:#fff;border:1px solid #edf0f3;box-shadow:0 8px 22px rgba(22,38,54,.06);text-align:left;animation:pdf-transcript-in .35s ease both}.pdf-transcript-note span{display:block;font-size:7px;letter-spacing:.12em;color:#e31b23;font-weight:700;margin-bottom:7px}.pdf-transcript-note p{display:inline;font-size:10px;line-height:1.5;color:#4e5c66;margin:0}.pdf-transcript-note i{font-style:normal;color:#e31b23;font-size:10px;animation:pdf-caret .8s steps(1) infinite}@keyframes pdf-transcript-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}@keyframes pdf-caret{50%{opacity:0}}
+.pdf-thinking-card{width:min(680px,calc(100% - 80px));min-height:320px;background:#fff;border:1px solid #f0f1f3;border-radius:4px;box-shadow:0 14px 34px rgba(22,38,54,.1);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;animation:pdf-thinking-in .35s ease both}
+.pdf-thinking-logo{width:112px;height:112px;position:relative;display:grid;place-items:center;margin-bottom:20px;color:#e31b23}.pdf-thinking-logo span{position:absolute;inset:0;border-radius:50%;border:9px solid #f8d9d9;animation:pdf-thinking-ring 2s ease-out infinite}.pdf-thinking-logo span+span{inset:13px;border-color:#efabab;animation-delay:.35s}.pdf-thinking-logo svg{position:relative;z-index:2;width:28px;height:28px;fill:#e31b23;stroke:#e31b23}.pdf-thinking-card h2{font-size:15px;font-weight:500;margin:0 0 6px;color:#29353f}.pdf-thinking-card p{font-size:10px;color:#9aa4ac;margin:0}.pdf-thinking-card .pdf-loader-dots{margin-top:14px}
+@keyframes pdf-thinking-ring{0%{transform:scale(.78);opacity:.85}100%{transform:scale(1.35);opacity:0}}@keyframes pdf-thinking-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:700px){.pdf-chat-sidebar{width:178px}}
+.pdf-email-field{border:0;border-bottom:1px solid #edf0f3;outline:0;color:#68747d;font:inherit;font-size:10px;padding:2px 4px;width:calc(100% - 70px)}
+.pdf-email-editor{display:block;width:100%;min-height:105px;border:0;resize:vertical;font:inherit;font-size:10px;outline:0}
+.pdf-conversation{width:100%!important;max-width:none!important;height:calc(100vh - 64px)!important;max-height:calc(100vh - 64px)!important;margin:0!important;padding:34px 7% 150px!important;overflow-y:auto!important;overflow-x:hidden!important}.pdf-chat-row{width:100%!important}.pdf-chat-row.user{padding-left:18%}.pdf-chat-row.assistant{padding-right:18%}.pdf-email-card{margin-left:28px!important;margin-right:auto!important}
+.pdf-chat-shell{height:100vh!important;min-height:0!important;overflow:hidden!important}.pdf-chat-sidebar{height:100vh!important;min-height:0!important;flex:none}.pdf-chat-main{height:100vh!important;min-height:0!important;overflow:hidden!important}.pdf-chat-topbar{position:relative;z-index:3;flex:none}.pdf-conversation{height:calc(100vh - 90px);max-height:calc(100vh - 90px);overflow-y:auto;overscroll-behavior:contain;padding-bottom:130px}.pdf-voice-view,.pdf-idle-view{overflow:hidden}
+.pdf-text-processing{max-width:680px;margin:70px auto;padding:0 25px;min-height:300px}.pdf-text-processing .pdf-message{animation:pdf-transcript-in .25s ease both}.pdf-processing-assistant{display:flex;align-items:center;gap:9px;margin-top:12px;animation:pdf-transcript-in .25s ease both}.pdf-processing-assistant img{width:19px;height:19px;object-fit:contain;animation:pdf-logo-spin 1.5s linear infinite}.pdf-processing-assistant .pdf-chat-typing{padding:10px 14px;background:#fff;border:1px solid #edf0f3}.pdf-chat-typing{display:flex;gap:4px}.pdf-chat-typing i{width:6px;height:6px;border-radius:50%;background:#aab3ba;animation:pdf-dot 1.1s infinite}.pdf-chat-typing i:nth-child(2){animation-delay:.15s}.pdf-chat-typing i:nth-child(3){animation-delay:.3s}@keyframes pdf-logo-spin{to{transform:rotate(360deg)}}
+.pdf-today{text-align:center;color:#9aa5ae;font-size:8px;margin-bottom:22px}.pdf-chat-row{display:flex;align-items:flex-start;gap:9px;margin:13px 0}.pdf-chat-row.assistant{justify-content:flex-start}.pdf-chat-row.user{justify-content:flex-end}.pdf-chat-row.assistant>img{width:19px;height:19px;object-fit:contain;margin-top:8px}.pdf-chat-row .pdf-message{margin:0;max-width:420px}.pdf-chat-row.user .pdf-message{background:#d7dde2}.pdf-user-dot{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:#fff;border:1px solid #edf0f3;color:#8d98a1;font-size:9px;margin-top:7px}
+.pdf-email-card.is-sent{border-color:#dcefe4}.pdf-email-card.is-sent .pdf-email-body{background:#f4faf6}.pdf-email-sent-status{margin-top:12px;padding-top:10px;border-top:1px solid #edf0f3;color:#2f8a57;font-size:9px;font-weight:600}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+   Additions for the real chat pipeline. Additive only: globals.css is shared
+   with the marketing pages and must not be touched from here.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+/* Composer is a textarea now (Enter sends, Shift+Enter newlines), so it needs the
+   same treatment the old <input> had plus auto-height behaviour. */
+.pdf-composer-inner textarea{flex:1;border:0;outline:0;font-size:10px;color:#45535e;background:transparent;resize:none;font-family:inherit;line-height:1.5;padding:9px 0;max-height:76px}
+.pdf-composer-inner textarea:disabled{opacity:.55;cursor:not-allowed}
+
+/* Agent replies are frequently multi-line lists from Graph. Without pre-wrap they
+   collapse onto one line. overflow-wrap keeps long URLs from overflowing the bubble. */
+.pdf-message{white-space:pre-wrap;overflow-wrap:anywhere}
+
+/* Links inside assistant replies (see components/chat/render-message.tsx). */
+.pdf-message a{color:#1a6fc4;text-decoration:underline;word-break:break-all}
+
+/* Real profile photo in the 21px sidebar avatar and the in-message dot. */
+.pdf-user-avatar img,.pdf-user-dot img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+
+/* "speaking" now means TTS playback, which must not look identical to "listening". */
+.pdf-voice-orb.speaking button{background:#173653;box-shadow:0 8px 22px #17365340}
+.pdf-voice-orb.speaking span{border-color:#c3d2de}
+.pdf-voice-orb.speaking span+span{border-color:#8fa6b8}
+
+/* Silence auto-stop countdown, shown while listening. */
+.pdf-countdown{margin:6px 0 0;font-size:10px;font-weight:600;color:#8a6416;background:#fffaf0;border:1px solid #f0dcb0;padding:4px 10px;border-radius:2px}
+
+/* Stop-speaking control in the composer row. */
+.pdf-stop-speaking{display:inline-flex;align-items:center;gap:5px;margin-right:6px;padding:5px 9px;border:1px solid #f0dcb0;background:#fffaf0;color:#8a6416;font-size:9px;font-weight:700;cursor:pointer;white-space:nowrap}
+
+/* Error / warning bar, stacked above whichever bottom control is visible. */
+.pdf-error-bar{position:absolute;left:50%;transform:translateX(-50%);bottom:84px;width:min(670px,calc(100% - 48px));display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 13px;background:#fff4f4;border:1px solid #f3caca;color:#a62129;font-size:10px;z-index:4}
+.pdf-error-bar.is-voice{bottom:66px}
+.pdf-error-bar.is-warn{background:#fffaf0;border-color:#f0dcb0;color:#8a6416}
+.pdf-error-bar button{border:0;background:transparent;color:inherit;cursor:pointer;display:grid;place-items:center;flex-shrink:0}
+
+/* Delete confirmations are not "send" actions - warn rather than invite. */
+.pdf-email-card.is-deletion{border-color:#f0dcb0;background:#fffdf8}
+.pdf-email-card.is-deletion .pdf-email-head{color:#8a6416}
+
+/* Read-only fields (action types with editableFields: []). */
+.pdf-email-field[readonly],.pdf-email-editor[readonly]{background:#f6f8f9;color:#5c6b76;cursor:default}
+
+.pdf-empty-recent{display:block;padding:8px 4px;font-size:10px;color:#98a7b1}
+
+/* Pre-session boot splash, so the hero never flashes before a redirect. */
+.pdf-chat-boot{min-height:100vh;display:grid;place-content:center;justify-items:center;gap:14px;background:#f8fafb}
+.pdf-chat-boot img{width:44px;height:44px;object-fit:contain}
+.pdf-chat-boot p{margin:0;font-size:11px;color:#8b9aa5}
+
+/* Session-expired notice on the login page (?expired=1). */
+.portal-expired{margin-top:10px;padding:8px 11px;background:#fffaf0;border:1px solid #f0dcb0;color:#8a6416;font-size:11px;font-weight:600}
+
+/* Per-message timestamp, as the previous UI showed under each bubble. */
+.pdf-msg-time{display:block;margin-top:5px;font-size:8px;font-weight:600;letter-spacing:.04em;color:#9aa8b2}

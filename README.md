@@ -1,5 +1,25 @@
 # Azure Voice AI Agent - Complete Setup & Deployment Guide
 
+## UI
+
+The user interface is a Next.js app in `frontend/`, shipped as a **static export** and served by
+`server.js` from the same origin as the API. Build it with:
+
+```
+cd frontend
+npm ci
+npm run build          # writes frontend/out/, which server.js serves
+```
+
+`NEXT_PUBLIC_*` values are inlined at build time, so they must be set for the build, not the
+run. The Dockerfile sets both: `NEXT_PUBLIC_ENABLE_MOCKS=false` (anything else ships mock data)
+and an empty `NEXT_PUBLIC_API_URL` (so every fetch is same-origin relative).
+
+Routes: `/` marketing (redirects to `/chat` when signed in) · `/chat` the assistant ·
+`/login` sign-in · `/legacy/` the pre-migration UI, kept only as a rollback and due for deletion
+once the new UI is proven.
+
+
 ## 🎯 Project Overview
 
 Azure Voice AI Agent is a production-ready voice-based AI assistant that integrates with Microsoft 365 and Azure cognitive services. Users can interact via voice or text with customizable voice accents, sending emails, scheduling meetings, managing calendars, and more.

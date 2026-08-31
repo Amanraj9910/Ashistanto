@@ -74,14 +74,19 @@ jobs:
 
       - name: 🏥 Health Check
         run: |
+          BASE=https://ashistanto-bhc0fpeugkd9fqft.eastus-01.azurewebsites.net
+          # /api/config alone is not sufficient: it is independent of the static UI mount and
+          # answers 200 even when the Next export is missing, turning a broken deploy green.
           echo "Checking application health..."
           for i in {1..10}; do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://hd-ashistanto-appservice-e6f6ccd7ddgdegem.australiacentral-01.azurewebsites.net || echo "000")
-            if [ "$STATUS" = "200" ]; then
-              echo "✅ App is healthy"
+            API=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/api/config" || echo "000")
+            UI=$(curl -s -o /dev/null -w "%{http_code}" "$BASE/" || echo "000")
+            CHAT=$(curl -s -o /dev/null -w "%{http_code}" -L "$BASE/chat/" || echo "000")
+            if [ "$API" = "200" ] && [ "$UI" = "200" ] && [ "$CHAT" = "200" ]; then
+              echo "✅ App is healthy (api=$API ui=$UI chat=$CHAT)"
               exit 0
             fi
-            echo "⏳ Attempt $i - Status: $STATUS"
+            echo "⏳ Attempt $i - api=$API ui=$UI chat=$CHAT"
             sleep 15
           done
           echo "❌ Health check failed"

@@ -36,10 +36,53 @@ const upload = multer({
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static('public'));
+
+// ─── Static UI ───
+// The UI is a Next.js static export (see frontend/). It is served from the SAME ORIGIN as this
+// API, so the browser makes plain relative /api/* and /auth/* requests -- no CORS, no proxy.
+// Paths are __dirname-relative on purpose: the previous express.static('public') was
+// CWD-relative and only worked because the Dockerfile happens to set WORKDIR /app.
+const uiRoot = path.join(__dirname, 'frontend', 'out');
+
+// Fail loudly at boot rather than serving a site-wide 404. This is the single most likely
+// deployment mistake: the image builds fine, /api/config answers 200, the pipeline health check
+// goes green, and every page is broken. Run `npm run build` in frontend/.
+if (!fs.existsSync(path.join(uiRoot, "index.html"))) {
+  console.error("");
+  console.error("[UI] No static export found at " + uiRoot);
+  console.error("[UI] Build it with:  cd frontend && npm ci && npm run build");
+  console.error("");
+}
+
+// Content-hashed bundles -- safe to cache forever.
+app.use('/_next', express.static(path.join(uiRoot, '_next'), { immutable: true, maxAge: '1y' }));
+
+// Pre-migration UI, kept as a rollback. Remove once the new UI is proven in production.
+app.use('/legacy', express.static(path.join(__dirname, 'public', 'legacy')));
+
+// trailingSlash:true in next.config.ts means every route is a directory + index.html, which
+// express.static resolves natively; the no-slash form gets a 301 that preserves the query
+// string (/auth/success?sessionId=... depends on that).
+app.use(express.static(uiRoot));
 
 // Mount auth routes
 app.use('/auth', authRouter);
+
+// Recent conversations for the sidebar RECENTS list.
+app.get('/api/conversations', async (req, res) => {
+  try {
+    const entries = await conversationSessions.entries();
+    const recent = entries.slice(-12).reverse().map(([sessionId, data]) => ({
+      id: sessionId,
+      title: data.history?.find((item) => item.user)?.user?.slice(0, 34) || 'New conversation',
+      time: data.history?.length ? new Date().toLocaleDateString() : 'Today'
+    }));
+    res.json(recent);
+  } catch (error) {
+    console.error('❌ Error listing conversations:', error.message);
+    res.status(500).json({ error: 'Failed to list conversations' });
+  }
+});
 
 // Get config endpoint
 app.get('/api/config', (req, res) => {
@@ -969,6 +1012,18 @@ app.post('/api/confirm-action', async (req, res) => {
     }
 
     if (userChoice === 'confirm') {
+      // Apply any inline edits BEFORE confirming. Without this the `edits` in the request body
+      // were accepted and silently dropped: the confirm path below reads
+      // `editedData || originalData`, and only the 'edit' branch above ever wrote editedData.
+      // Net effect was that a user could change an email body, press Send, and the ORIGINAL
+      // draft went out with no error shown.
+      if (edits && Object.keys(edits).length > 0) {
+        const editResult = await actionPreview.editPendingAction(actionId, edits);
+        if (!editResult.success) {
+          return res.status(400).json({ error: editResult.error || 'Failed to apply edits' });
+        }
+      }
+
       // First confirm the action in the store
       const confirmResult = await actionPreview.confirmAction(actionId, { confirmed: true });
       if (!confirmResult.success) {
@@ -1091,6 +1146,12 @@ app.post('/api/confirm-action', async (req, res) => {
       error: error.message || 'Failed to process action confirmation'
     });
   }
+});
+
+// ─── SPA-style 404 ───
+// Registered last, so it only runs when no /api, /auth or static file matched.
+app.use((req, res) => {
+  res.status(404).sendFile(path.join(uiRoot, '404.html'));
 });
 
 const PORT = process.env.PORT || 3000;
