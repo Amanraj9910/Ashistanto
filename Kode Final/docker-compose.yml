@@ -1,0 +1,116 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ashistanto-postgres
+    environment:
+      POSTGRES_DB: ashistanto
+      POSTGRES_USER: ashistanto
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ashistanto-postgres-data:/var/lib/postgresql/data
+      - ./backend/migrations/001_postgres.sql:/docker-entrypoint-initdb.d/001_postgres.sql:ro
+      - ./backend/migrations/002_context.sql:/docker-entrypoint-initdb.d/002_context.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ashistanto -d ashistanto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  azure-voice-ai:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: azure-voice-ai-agent
+    ports:
+      - "3000:3000"
+    environment:
+      # Core Configuration
+      NODE_ENV: production
+      PORT: 3000
+      DOCKER_ENV: "true"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ashistanto:change-me-local-only@postgres:5432/ashistanto}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+
+      # Azure Speech Services Configuration
+      AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY}
+      AZURE_SPEECH_REGION: ${AZURE_SPEECH_REGION}
+
+      # Azure OpenAI Configuration
+      AZURE_OPENAI_KEY: ${AZURE_OPENAI_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-gpt-4o-mini}
+
+      # Azure Graph API Configuration (for Microsoft 365 Integration)
+      AZURE_TENANT_ID: ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID: ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET: ${AZURE_CLIENT_SECRET}
+      APP_REDIRECT_URI: ${APP_REDIRECT_URI:-http://localhost:3000/auth/callback}
+
+      # FFmpeg Configuration
+      FFMPEG_PATH: /usr/bin/ffmpeg
+
+    volumes:
+      # Optional: Mount local logs directory
+      - ./logs:/app/logs
+
+    # Health check configuration
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/config"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Network configuration
+    networks:
+      - azure-voice-network
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    # Resource limits (adjust based on your needs)
+    # Uncomment to enable resource constraints
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 512M
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 256M
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  azure-voice-network:
+    driver: bridge
+
+volumes:
+  ashistanto-postgres-data:
+
+# Build instructions:
+# docker-compose build
+#
+# Run instructions:
+# docker-compose up -d
+#
+# View logs:
+# docker-compose logs -f
+#
+# Stop service:
+# docker-compose down
+#
+# Full cleanup (remove volumes):
+# docker-compose down -v

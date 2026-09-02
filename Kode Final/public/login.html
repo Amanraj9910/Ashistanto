@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="theme-color" content="#260003">
+    <title>Secure Portal — Ashistanto</title>
+    <link rel="icon" href="img/favicon.ico.png" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --ink: #090909;
+            --muted: #666666;
+            --line: #dfe1e4;
+            --paper: #fbfbfa;
+            --soft: #f0f1f2;
+            --signal: #ff3b30;
+            --maroon: #260003;
+        }
+
+        *, *::before, *::after { box-sizing: border-box; }
+
+        html, body { min-height: 100%; }
+
+        body {
+            margin: 0;
+            color: var(--ink);
+            background: var(--paper);
+            font-family: 'Manrope', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        button { font: inherit; }
+
+        .login-shell {
+            display: grid;
+            grid-template-columns: minmax(320px, 35.3%) 1fr;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .auth-panel {
+            --panel-gutter: clamp(2rem, 5.4vw, 5rem);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            min-height: 100vh;
+            padding: clamp(2rem, 7.5vh, 5.5rem) var(--panel-gutter) 0;
+            background: var(--paper);
+            z-index: 2;
+        }
+
+        .auth-content { width: min(100%, 330px); margin: 0 auto; }
+
+        .wordmark {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: var(--signal);
+            text-decoration: none;
+            justify-content: center;
+            font-size: 1.02rem;
+            font-weight: 800;
+            letter-spacing: -0.035em;
+        }
+
+        .wordmark-logo { display: block; width: min(100%, 13rem); height: auto; max-height: 2.8rem; object-fit: contain; object-position: left center; }
+
+        .auth-copy { margin-top: clamp(3rem, 6vh, 4.5rem); }
+
+        .auth-copy h1 {
+            margin: 0 0 0.65rem;
+            font-size: clamp(2.45rem, 3.8vw, 3.35rem);
+            line-height: 1.04;
+            letter-spacing: -0.065em;
+            font-weight: 800;
+        }
+
+        .auth-copy p {
+            margin: 0;
+            max-width: 260px;
+            color: #292929;
+            font-size: 0.88rem;
+            line-height: 1.65;
+            letter-spacing: -0.015em;
+        }
+
+        .ms-signin-btn {
+            width: 100%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-top: 2.25rem;
+            padding: 0.95rem 1rem;
+            border: 1px solid #d2d9e2;
+            border-radius: 0.42rem;
+            color: #16233a;
+            background: #ffffff;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: -0.01em;
+            cursor: pointer;
+            transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+        }
+
+        .ms-signin-btn:hover { border-color: #9da9b7; box-shadow: 0 5px 16px rgba(21, 32, 48, 0.08); }
+        .ms-signin-btn:active { transform: translateY(1px); }
+        .ms-signin-btn:focus-visible { outline: 3px solid rgba(255, 59, 48, 0.22); outline-offset: 3px; }
+        .ms-signin-btn:disabled { opacity: 0.65; cursor: wait; }
+
+        .encrypted-note {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            margin-top: 2rem;
+            padding: 0.76rem 0.85rem;
+            border: 1px solid #e1e3e5;
+            border-radius: 0.42rem;
+            color: #151515;
+            background: #f1f2f3;
+            font-size: 0.69rem;
+            letter-spacing: 0.045em;
+        }
+
+        .encrypted-note svg { width: 0.9rem; height: 0.9rem; color: var(--signal); flex: 0 0 auto; }
+
+        .auth-footer {
+            margin: 4rem -1px 0;
+            margin-left: calc(-1 * var(--panel-gutter));
+            margin-right: calc(-1 * var(--panel-gutter));
+            padding: 1.8rem var(--panel-gutter) 2.2rem;
+            border-top: 1px solid #e0e2e4;
+            background: #f0f1f2;
+            color: #242424;
+            font-size: 0.56rem;
+            line-height: 1.55;
+        }
+
+        .auth-footer span { display: block; width: min(100%, 330px); margin: 0 auto; }
+
+        .visual-panel {
+            position: relative;
+            display: grid;
+            place-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            isolation: isolate;
+            color: #060606;
+            background: linear-gradient(90deg, rgba(38, 0, 3, 0.34), rgba(38, 0, 3, 0.08)), url("img/BANNER-2_IMAGE.jpg") center bottom / cover no-repeat;
+        }
+
+        .visual-panel::before {
+            content: '';
+            position: absolute;
+            inset: -15%;
+            z-index: -2;
+            opacity: 0.16;
+            background:
+                repeating-linear-gradient(104deg, transparent 0 26px, rgba(235, 38, 84, 0.18) 27px 28px, transparent 29px 48px),
+                repeating-linear-gradient(13deg, transparent 0 44px, rgba(228, 25, 74, 0.14) 45px 46px, transparent 47px 78px);
+            transform: perspective(500px) rotateX(55deg) rotateZ(-7deg) translateY(29%);
+            filter: blur(0.35px);
+        }
+
+        .visual-panel::after {
+            content: '';
+            position: absolute;
+            inset: 0;
+            z-index: -1;
+            opacity: 0.32;
+            background: radial-gradient(circle at 50% 50%, transparent 0 36%, rgba(0, 0, 0, 0.52) 100%);
+            pointer-events: none;
+        }
+
+        .security-card {
+            width: min(78%, 560px);
+            padding: 3rem 3.25rem 2.7rem;
+            border: 1px solid rgba(255, 255, 255, 0.24);
+            border-radius: 0.8rem;
+            background: rgba(212, 200, 202, 0.42);
+            box-shadow: 0 22px 60px rgba(0, 0, 0, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+            backdrop-filter: blur(8px);
+            transform: translateY(4%);
+        }
+
+        .security-card-rule { width: 2.85rem; height: 0.18rem; margin-bottom: 1.85rem; background: var(--signal); }
+
+        .security-card h2 {
+            margin: 0;
+            font-size: clamp(2.45rem, 4.2vw, 4rem);
+            line-height: 1.02;
+            letter-spacing: -0.072em;
+            font-weight: 800;
+        }
+
+        .security-card p {
+            max-width: 430px;
+            margin: 1.8rem 0 0;
+            color: #12090b;
+            font-size: 0.86rem;
+            line-height: 1.65;
+            letter-spacing: -0.01em;
+        }
+
+        .card-dots { display: flex; gap: 0.65rem; margin-top: 2rem; }
+        .card-dot { width: 0.36rem; height: 0.36rem; border-radius: 50%; background: rgba(255, 255, 255, 0.58); }
+        .card-dot.active { background: var(--signal); }
+
+        .visual-label {
+            position: absolute;
+            right: 2.5rem;
+            bottom: 2rem;
+            color: rgba(255, 255, 255, 0.42);
+            font-size: 0.57rem;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+        }
+
+        .spinner {
+            width: 0.9rem;
+            height: 0.9rem;
+            border: 2px solid rgba(22, 35, 58, 0.22);
+            border-top-color: #16233a;
+            border-radius: 50%;
+            animation: spin 700ms linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        @media (max-width: 820px) {
+            .login-shell { grid-template-columns: 1fr; }
+            .visual-panel { display: none; }
+            .auth-panel { --panel-gutter: 1.6rem; padding: 2.6rem var(--panel-gutter) 0; }
+            .auth-content { max-width: 390px; }
+            .auth-copy { margin-top: 5rem; }
+        }
+
+        @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
+    </style>
+</head>
+
+<body>
+    <main class="login-shell">
+        <section class="auth-panel" aria-labelledby="login-title">
+            <div class="auth-content">
+                <a class="wordmark" href="/" aria-label="Ashistanto home">
+                    <img class="wordmark-logo" src="img/Hosho-Digital-Logo.png" alt="Ashistanto">
+                </a>
+
+                <div class="auth-copy">
+                    <h1 id="login-title">Secure Portal</h1>
+                    <p>Enterprise Access Only.<br>Use your corporate account to continue.</p>
+
+                    <button id="ms-btn" class="ms-signin-btn" type="button" onclick="handleLogin(event)">
+                        <svg width="17" height="17" viewBox="0 0 21 21" fill="none" aria-hidden="true">
+                            <rect width="10" height="10" fill="#F25022" /><rect x="11" width="10" height="10" fill="#7FBA00" />
+                            <rect y="11" width="10" height="10" fill="#00A4EF" /><rect x="11" y="11" width="10" height="10" fill="#FFB900" />
+                        </svg>
+                        <span>Sign in with Microsoft</span>
+                    </button>
+
+                    <div class="encrypted-note" role="status">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                            <path d="M12 3 19 6v5c0 4.5-2.8 7.8-7 9.5C7.8 18.8 5 15.5 5 11V6l7-3Z" />
+                            <path d="m9.5 12 1.6 1.6 3.5-3.6" />
+                        </svg>
+                        <strong>ENCRYPTED SESSION</strong>
+                    </div>
+                </div>
+            </div>
+
+            <footer class="auth-footer">
+                <span>System monitoring is active. Unauthorized access is prohibited and logged.</span>
+            </footer>
+        </section>
+
+        <section class="visual-panel" aria-label="Ashistanto security platform">
+            <div class="security-card">
+                <div class="security-card-rule" aria-hidden="true"></div>
+                <h2>Empowering<br>Digital Security</h2>
+                <p>Access the Hoshō Digital ecosystem. Advanced threat protection and unified identity management, engineered for enterprise scale.</p>
+                <div class="card-dots" aria-hidden="true"><span class="card-dot active"></span><span class="card-dot"></span></div>
+            </div>
+            <div class="visual-label">IDENTITY / ACCESS / 01</div>
+        </section>
+    </main>
+
+    <script>
+        // Clear any existing session on login page load.
+        localStorage.removeItem('userSessionId');
+
+        function handleLogin(event) {
+            const button = event.currentTarget;
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            button.innerHTML = '<span class="spinner" aria-hidden="true"></span><span>Redirecting…</span>';
+
+            window.setTimeout(function () {
+                window.location.href = '/auth/login';
+            }, 350);
+        }
+
+        // Prevent returning to a stale authenticated session through browser history.
+        window.history.pushState(null, '', window.location.href);
+        window.onpopstate = function () { window.history.pushState(null, '', window.location.href); };
+    </script>
+</body>
+
+</html>
