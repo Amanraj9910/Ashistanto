@@ -47,16 +47,17 @@ COPY --from=builder /app/node_modules ./node_modules
 
 # Copy application files
 COPY package*.json ./
-COPY server.js .
-COPY auth.js .
-COPY tts-service.js .
-COPY agent-tools.js .
-COPY graph-tools.js .
-COPY formatters.js .
-COPY timezone-helper.js .
-COPY action-preview.js .
-COPY storage.js .
+# Copy ALL backend modules in one go. These used to be listed file by file, which is exactly
+# how contact-resolver.js got left out: the image built fine, the health check went green, and
+# the app threw MODULE_NOT_FOUND the first time a user asked it to send mail. Test files and
+# deploy helpers are kept out via .dockerignore.
+COPY *.js ./
+COPY scripts/ ./scripts/
 COPY public/ ./public/
+
+# Fail the BUILD if any relative require() cannot be resolved inside the image. Static check:
+# it never executes the modules, so no DB files, no network, no credentials.
+RUN node scripts/check-requires.js
 # Built UI (index.html, login/, chat/, auth/success/, _next/, img/, official/, 404.html)
 COPY --from=ui /app/frontend/out ./frontend/out
 

@@ -74,7 +74,13 @@ jobs:
 
       - name: 🏥 Health Check
         run: |
-          BASE=https://ashistanto-bhc0fpeugkd9fqft.eastus-01.azurewebsites.net
+          # Resolve the hostname from the app we actually deployed to. This was previously a
+          # hardcoded eastus URL for a different App Service, so the check was green regardless
+          # of whether this deployment worked.
+          HOST=$(az webapp show --name "${{ env.APP_NAME }}" --resource-group "${{ env.RESOURCE_GROUP }}" --query defaultHostName -o tsv)
+          if [ -z "$HOST" ]; then echo "Could not resolve the app hostname"; exit 1; fi
+          BASE="https://$HOST"
+          echo "Health-checking $BASE"
           # /api/config alone is not sufficient: it is independent of the static UI mount and
           # answers 200 even when the Next export is missing, turning a broken deploy green.
           echo "Checking application health..."

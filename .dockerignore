@@ -18,3 +18,10 @@ frontend/.next
 frontend/out
 frontend/.env.local
 frontend/.env*.local
+test-*.js
+azure-push.js
+deploy-azure.ps1
+push-to-acr.ps1
+setup-docker.ps1
+data.sqlite
+*.msi
