@@ -14,6 +14,24 @@ const logos = [
   ['Word', '/img/png-transparent-microsoft-word-logo.png']
 ];
 
+function AnimatedStat({ value, suffix = '' }: { value: number; suffix?: string }) {
+  const [current, setCurrent] = useState(0);
+  useEffect(() => {
+    const duration = 950;
+    const started = performance.now();
+    let frame = 0;
+    const tick = (now: number) => {
+      const progress = Math.min((now - started) / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCurrent(value % 1 ? Number((value * eased).toFixed(1)) : Math.round(value * eased));
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+  return <>{current}{suffix}</>;
+}
+
 export function MarketingHome() {
   const [capability, setCapability] = useState('Email');
   const [voiceDemo, setVoiceDemo] = useState<'idle' | 'listening' | 'preview' | 'sent'>('idle');
@@ -35,7 +53,7 @@ export function MarketingHome() {
     <main className="marketing-page">
       <header className="marketing-nav">
         <Link href="/" className="marketing-logo"><img src="/img/cropped-logo.png" alt="Ashistanto" /></Link>
-        <nav><a href="#features">Features</a><a href="#how">How It Works</a><a href="#capabilities">Capabilities</a><a href="#testimonials">Testimonials</a></nav>
+        <nav><a href="/" aria-current="page">Home</a><a href="/about">About</a><a href="/solutions">Solutions</a><a href="/contact">Contact Us</a></nav>
         <Link href="/login" className="marketing-nav-cta">Get Started <ArrowRight size={13} /></Link>
       </header>
 
@@ -76,10 +94,10 @@ export function MarketingHome() {
         </div>
       </section>
 
-      <section className="stats-row">{[['6+', 'M365 INTEGRATIONS'], ['99.9%', 'UPTIME RELIABILITY'], ['10x', 'FASTER THAN MANUAL'], ['24/7', 'ALWAYS AVAILABLE']].map(([value, label]) => <div key={label}><strong>{value}</strong><small>{label}</small></div>)}</section>
-      <section className="ecosystem"><p>POWERED BY THE MICROSOFT ECOSYSTEM</p><div>{[...logos, ...logos, ...logos].map(([name, src], index) => <span key={`${name}-${index}`} aria-hidden={index >= logos.length}><img src={src} alt={index >= logos.length ? '' : name} />{name}</span>)}</div></section>
+      <section className="stats-row">{[[6, '+', 'M365 INTEGRATIONS'], [99.9, '%', 'UPTIME RELIABILITY'], [10, 'x', 'FASTER THAN MANUAL'], [24, '/7', 'ALWAYS AVAILABLE']].map(([value, suffix, label]) => <div key={label}><strong><AnimatedStat value={Number(value)} suffix={String(suffix)} /></strong><small>{label}</small></div>)}</section>
+      <section className="ecosystem"><p>POWERED BY THE MICROSOFT ECOSYSTEM</p><div className="ecosystem-viewport"><div className="ecosystem-track">{[...logos, ...logos, ...logos].map(([name, src], index) => <span key={`${name}-${index}`} aria-hidden={index >= logos.length}><img src={src} alt={index >= logos.length ? '' : name} /></span>)}</div></div></section>
 
-      <section id="how" className="section section-muted"><div className="section-heading left"><p className="eyebrow">SIMPLE SETUP</p><h2>Up and Running in Three Steps</h2><p>No complex configurations. Connect your Microsoft account and start talking to Ashistanto in under a minute.</p></div><div className="step-grid">{[['01','Sign in with Microsoft','Securely connect your Microsoft 365 account with a single click. Enterprise-grade OAuth authentication keeps your data protected.'],['02','Speak Naturally','No rigid commands to memorize. Just talk like you would to a colleague—“send an email to Sarah about tomorrow’s meeting.”'],['03','Watch It Execute','Ashistanto processes your request in real-time—drafting emails, creating meetings, and more. Results are confirmed before anything executes.']].map(([num,title,copy]) => <article className="step-card" key={num}><b>{num}</b><div className="icon-tile">{num === '01' ? <LogIn size={17}/> : num === '02' ? <Mic size={17}/> : <Check size={17}/>}</div><h3>{title}</h3><p>{copy}</p></article>)}</div></section>
+      <section id="how" className="section section-muted"><div className="section-heading left"><p className="eyebrow">SIMPLE SETUP</p><h2>Up and Running in Three Steps</h2><p>No complex configurations. Connect your Microsoft account and start talking to Ashistanto in under a minute.</p></div><div className="step-grid step-spectrum">{[['01','Sign in to Microsoft','Securely connect your Microsoft 365 account with a single click. Enterprise-grade OAuth authentication keeps your data protected.'],['02','Speak Naturally','No rigid commands to memorize. Just talk like you would to a colleague—“send an email to Sarah about tomorrow’s meeting.”'],['03','Watch It Execute','Ashistanto processes your request in real-time—drafting emails, creating meetings, and more. Results are confirmed before anything executes.']].map(([num,title,copy]) => <article className="step-card" key={num}><h3>{title}</h3><p>{copy}</p></article>)}</div></section>
 
       <section id="capabilities" className="section capabilities"><div className="section-heading center"><p className="eyebrow">CAPABILITIES</p><h2>Everything You Need, One Voice Command Away</h2><p>Ashistanto integrates deeply with Microsoft 365 to handle your most common workplace tasks.</p></div><div className="cap-tabs">{Object.keys(capabilityCopy).map((tab) => <button key={tab} className={capability === tab ? 'active' : ''} onClick={() => setCapability(tab)}>{tab}</button>)}</div><div className="cap-content capability-transition" key={capability}><div><h2>{activeCapability.title}</h2><p>{activeCapability.description}</p>{activeCapability.bullets.map((item) => <p className="check-line" key={item}><Check size={14}/>{item}</p>)}</div><div className="email-mock"><div className="mock-window"><span className="mock-dot red"></span><span className="mock-dot yellow"></span><span className="mock-dot green"></span><div className="mock-input">{capability === 'Email' ? 'Send an email to John about the project...' : `Ask Ashistanto about ${capability.toLowerCase()}...`}</div><div className="mock-success">{capability} action prepared — ready for your review</div></div></div></div></section>
 
@@ -92,7 +110,15 @@ export function MarketingHome() {
       <section className="section section-muted use-cases"><div className="section-heading left"><p className="eyebrow">DAILY WORKFLOWS</p><h2>How Teams Use Ashistanto</h2><p>Real scenarios that save time every day.</p></div><div className="use-grid">{['Morning Routine','Meeting Prep','Follow-Up','Document Search','Quick Reply','Research'].map((title,i) => <article className={i%2===0?'pink':''} key={title}><small>{i<3?'START YOUR DAY':'FIND IT FAST'}</small><h3>{title}</h3><p>“{i===0?'What’s my schedule today and which emails need attention?':'Give me the latest updates and prepare the next action.'}”</p></article>)}</div></section>
 
       <section className="marketing-cta" style={{ backgroundImage: "url('/img/get-started-banner.png')" }}><h2>Ready to Transform How You Work?</h2><p>Join the next generation of workplace productivity. Start using Ashistanto today.</p><Link href="/login" className="button button-white">Get Started — It’s Free <ArrowRight size={14}/></Link></section>
-      <footer className="marketing-footer"><div><Link href="/" className="marketing-logo"><img src="/img/cropped-logo.png" alt="Ashistanto" /></Link><p>Your intelligent voice-powered AI assistant for Microsoft 365. Manage your entire digital workspace through natural conversation.</p></div><div><b>Product</b><a href="#features">Features</a><a href="#capabilities">Capabilities</a><a href="/chat">Try it Now</a></div><div><b>Integrations</b><a>Microsoft Outlook</a><a>Microsoft Teams</a><a>OneDrive</a><a>SharePoint</a></div><div><b>Company</b><a>About Hosho Digital</a><a>Privacy Policy</a><a>Terms of Service</a><a>Contact Us</a></div></footer>
+      <footer className="marketing-footer">
+        <div className="footer-main">
+          <div className="footer-brand"><Link href="/" className="marketing-logo"><img src="/img/cropped-logo.png" alt="Ashistanto" /></Link><small className="footer-byline">An Ashistanto solution by Hosho Digital.</small><div className="footer-socials" aria-label="Hosho Digital social links"><a href="https://www.linkedin.com/company/hoshodigital" target="_blank" rel="noreferrer" aria-label="LinkedIn"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M20.45 20.45h-3.55v-5.57c0-1.33-.03-3.04-1.85-3.04-1.85 0-2.14 1.45-2.14 2.94v5.67H9.35V9h3.41v1.56h.05c.48-.9 1.64-1.85 3.37-1.85 3.6 0 4.27 2.37 4.27 5.46v6.28zM5.34 7.43a2.06 2.06 0 1 1 0-4.12 2.06 2.06 0 0 1 0 4.12zM3.56 20.45h3.56V9H3.56v11.45z"/></svg></a><a href="https://x.com/HoshoDigital" target="_blank" rel="noreferrer" aria-label="X"><img src="https://cdn.simpleicons.org/x/ffffff" alt="" /></a><a href="https://www.instagram.com/hoshodigital/" target="_blank" rel="noreferrer" aria-label="Instagram"><img src="https://cdn.simpleicons.org/instagram/ffffff" alt="" /></a><a href="https://www.youtube.com/@HoshoDigital" target="_blank" rel="noreferrer" aria-label="YouTube"><img src="https://cdn.simpleicons.org/youtube/ffffff" alt="" /></a></div></div>
+          <div><b>Company</b><a href="https://hoshodigital.com" target="_blank" rel="noreferrer">Hosho Digital</a><Link href="/">Home</Link><Link href="/about">About</Link></div>
+          <div><b>Solutions</b><Link href="/solutions">Ashistanto</Link></div>
+          <div><b>Contact Us</b><Link href="/contact">Contact Us</Link></div>
+        </div>
+        <div className="footer-bottom"><span>© 2026 HOSHO DIGITAL Pte. Ltd. ALL RIGHTS RESERVED.</span><nav aria-label="Legal"><a href="/privacy">Privacy Policy</a><a href="/accessibility">Accessibility Statement</a><a href="/terms">Terms of Use</a><a href="/cookies">Cookies Policy</a></nav></div>
+      </footer>
     </main>
   );
 }

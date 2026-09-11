@@ -57,8 +57,8 @@ export default function LoginPage() {
       <section className="portal-visual" aria-label="Ashistanto security platform">
         <div className="portal-card">
           <div className="portal-card-rule" aria-hidden="true" />
-          <h2>Empowering<br />Digital Security</h2>
-          <p>Access the Hosho Digital ecosystem. Advanced threat protection and unified identity management, engineered for enterprise scale.</p>
+          <h2>Voice-first<br />workplace actions</h2>
+          <p>Ask Ashistanto to work across Microsoft 365. Review every draft, meeting, and message before it is sent or changed.</p>
           <div className="portal-dots" aria-hidden="true"><span className="active" /><span /></div>
         </div>
       </section>

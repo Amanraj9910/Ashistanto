@@ -4,6 +4,15 @@
 @import "./capability-fix.css";
 @import "./workflow-fix.css";
 @import "./account-truncation.css";
+@import "./legal-pages.css";
+@import "./contact-overrides.css";
+@import "./legal-overrides.css";
+@import "./interaction-overrides.css";
+@import "./policy-banner-overrides.css";
+@import "./info-pages.css";
+
+::selection{background:#1248b8;color:#fff}
+::-moz-selection{background:#1248b8;color:#fff}
 
 .marketing-page {
   font-family: var(--font-inter), Inter, sans-serif;

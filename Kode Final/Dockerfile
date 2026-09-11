@@ -52,8 +52,8 @@ ARG VERSION
 LABEL org.opencontainers.image.created="${BUILD_DATE}" \
       org.opencontainers.image.revision="${VCS_REF}" \
       org.opencontainers.image.version="${VERSION}" \
-      org.opencontainers.image.title="Ashistanto" \
-      org.opencontainers.image.description="Ashistanto voice AI assistant for Microsoft 365"
+      org.opencontainers.image.title="Azure Voice AI Agent" \
+      org.opencontainers.image.description="Voice-based AI agent using Azure Speech Services and Azure OpenAI"
 
 # Set environment variables
 ENV NODE_ENV=production
