@@ -1,20 +1,13 @@
 import type { Metadata } from 'next';
-import { Manrope, Poppins } from 'next/font/google';
+import { Inter } from 'next/font/google';
 import './globals.css';
 import { Providers } from './providers';
 
-const poppins = Poppins({
+const inter = Inter({
   subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
+  weight: ['400', '500', '600', '700', '800', '900'],
   display: 'swap',
-  variable: '--font-poppins'
-});
-
-const manrope = Manrope({
-  subsets: ['latin'],
-  weight: ['400', '500', '600', '700', '800'],
-  display: 'swap',
-  variable: '--font-manrope'
+  variable: '--font-inter'
 });
 
 export const metadata: Metadata = {
@@ -53,16 +46,16 @@ export const metadata: Metadata = {
     images: ['/img/Hosho DIgital-Logo.jpg']
   },
   icons: {
-    icon: '/img/favicon.ico.png',
-    shortcut: '/img/favicon.ico.png',
-    apple: '/img/favicon.ico.png'
+    icon: '/img/Ashistanto-Red-Logo-1.png',
+    shortcut: '/img/Ashistanto-Red-Logo-1.png',
+    apple: '/img/Ashistanto-Red-Logo-1.png'
   }
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${poppins.variable} ${manrope.variable}`}>
+      <body className={`${inter.variable}`}>
         <Providers>{children}</Providers>
       </body>
     </html>

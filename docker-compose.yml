@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ashistanto-postgres
+    environment:
+      POSTGRES_DB: ashistanto
+      POSTGRES_USER: ashistanto
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-local-only}
+    ports:
+      - "5432:5432"
+    volumes:
+      - ashistanto-postgres-data:/var/lib/postgresql/data
+      - ./backend/migrations/001_postgres.sql:/docker-entrypoint-initdb.d/001_postgres.sql:ro
+      - ./backend/migrations/002_context.sql:/docker-entrypoint-initdb.d/002_context.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ashistanto -d ashistanto"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   azure-voice-ai:
     build:
       context: .
@@ -13,6 +32,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       DOCKER_ENV: "true"
+      DATABASE_URL: ${DATABASE_URL:-postgresql://ashistanto:change-me-local-only@postgres:5432/ashistanto}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
 
       # Azure Speech Services Configuration
       AZURE_SPEECH_KEY: ${AZURE_SPEECH_KEY}
@@ -50,6 +71,9 @@ services:
     # Network configuration
     networks:
       - azure-voice-network
+    depends_on:
+      postgres:
+        condition: service_healthy
 
     # Resource limits (adjust based on your needs)
     # Uncomment to enable resource constraints
@@ -72,6 +96,9 @@ services:
 networks:
   azure-voice-network:
     driver: bridge
+
+volumes:
+  ashistanto-postgres-data:
 
 # Build instructions:
 # docker-compose build

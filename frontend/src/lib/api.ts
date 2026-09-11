@@ -59,7 +59,7 @@ export async function getUserProfile(sessionId: string | null): Promise<UserProf
   return {
     displayName: profile.displayName || profile.firstName || 'User',
     firstName: profile.firstName || profile.displayName?.split(' ')[0] || 'User',
-    email: profile.email || 'user@company.onmicrosoft.com',
+    email: profile.email || '',
     role: profile.role || 'Director of Ops'
   };
 }

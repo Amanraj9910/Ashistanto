@@ -19,6 +19,7 @@ export type ChatMessage = {
   user: string;
   assistant: string;
   timestamp: string;
+  confirmed?: boolean;
 };
 
 export type ActionKind =

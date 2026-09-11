@@ -33,15 +33,7 @@ COPY --from=builder /app/node_modules ./node_modules
 
 # Copy application files
 COPY package*.json ./
-COPY server.js .
-COPY auth.js .
-COPY tts-service.js .
-COPY agent-tools.js .
-COPY graph-tools.js .
-COPY formatters.js .
-COPY timezone-helper.js .
-COPY action-preview.js .
-COPY storage.js .
+COPY backend/ ./backend/
 COPY public/ ./public/
 
 # Create working directory with proper ownership for node user
@@ -73,4 +65,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:3000/api/config || exit 1
 
 # Start application
-CMD ["node", "server.js"]
+CMD ["node", "backend/server.js"]

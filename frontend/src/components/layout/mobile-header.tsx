@@ -19,7 +19,7 @@ export function MobileHeader({ isSignedIn, onLogin, onLogout }: MobileHeaderProp
       <button
         type="button"
         onClick={() => setSidebarOpen(true)}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-none border border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
         aria-label="Open navigation"
       >
         <Menu className="h-5 w-5" />
@@ -29,7 +29,7 @@ export function MobileHeader({ isSignedIn, onLogin, onLogout }: MobileHeaderProp
       <button
         type="button"
         onClick={isSignedIn ? onLogout : onLogin}
-        className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
+        className="inline-flex h-10 w-10 items-center justify-center rounded-none border border-slate-200 bg-white text-slate-600 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-300"
         aria-label={isSignedIn ? 'Logout' : 'Login'}
       >
         {isSignedIn ? <LogOut className="h-5 w-5" /> : <LogIn className="h-5 w-5" />}

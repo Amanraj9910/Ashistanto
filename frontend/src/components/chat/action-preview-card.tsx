@@ -51,13 +51,13 @@ export function ActionPreviewCard({ action, isSubmitting, onConfirm, onCancel }:
   const canEdit = fields.some(([key]) => action.editable.includes(editKeyFor(key)) || action.editable.includes(key));
 
   return (
-    <div className="rounded-lg border border-red-100 bg-white p-4 shadow-sm dark:border-red-950/70 dark:bg-slate-950">
+    <div className="rounded-none border border-red-100 bg-white p-4 shadow-sm dark:border-red-950/70 dark:bg-slate-950">
       <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3 dark:border-slate-800">
         <div>
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-red-600 dark:text-red-500">Review Required</div>
           <h4 className="mt-1 text-base font-extrabold text-slate-950 dark:text-white">{action.title}</h4>
         </div>
-        <span className="rounded-full bg-red-50 px-3 py-1 text-xs font-bold uppercase text-red-700 dark:bg-red-950/50 dark:text-red-300">
+        <span className="rounded-none bg-red-50 px-3 py-1 text-xs font-bold uppercase text-red-700 dark:bg-red-950/50 dark:text-red-300">
           Pending
         </span>
       </div>
@@ -79,17 +79,17 @@ export function ActionPreviewCard({ action, isSubmitting, onConfirm, onCancel }:
                   <textarea
                     value={renderedValue}
                     onChange={(event) => setEdits((current) => ({ ...current, [editKey]: event.target.value }))}
-                    className="mt-1 min-h-[76px] w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-red-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+                    className="mt-1 min-h-[76px] w-full rounded-none border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-red-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   />
                 ) : (
                   <input
                     value={renderedValue}
                     onChange={(event) => setEdits((current) => ({ ...current, [editKey]: event.target.value }))}
-                    className="mt-1 w-full rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-red-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+                    className="mt-1 w-full rounded-none border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-800 outline-none focus:border-red-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
                   />
                 )
               ) : (
-                <span className="mt-1 block rounded-md bg-slate-50 px-3 py-2 text-sm leading-5 text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                <span className="mt-1 block rounded-none bg-slate-50 px-3 py-2 text-sm leading-5 text-slate-700 dark:bg-slate-900 dark:text-slate-200">
                   {renderedValue}
                 </span>
               )}
@@ -103,7 +103,7 @@ export function ActionPreviewCard({ action, isSubmitting, onConfirm, onCancel }:
           type="button"
           onClick={onCancel}
           disabled={isSubmitting}
-          className="rounded-md border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
+          className="rounded-none border border-slate-200 bg-white px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-800 dark:bg-slate-950 dark:text-slate-200 dark:hover:bg-slate-900"
         >
           Cancel
         </button>
@@ -112,7 +112,7 @@ export function ActionPreviewCard({ action, isSubmitting, onConfirm, onCancel }:
             type="button"
             onClick={() => setEditing((current) => !current)}
             disabled={isSubmitting}
-            className="rounded-md border border-red-100 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-950 dark:bg-red-950/40 dark:text-red-300"
+            className="rounded-none border border-red-100 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-50 dark:border-red-950 dark:bg-red-950/40 dark:text-red-300"
           >
             {editing ? 'Done Editing' : 'Edit'}
           </button>
@@ -121,9 +121,9 @@ export function ActionPreviewCard({ action, isSubmitting, onConfirm, onCancel }:
           type="button"
           onClick={() => onConfirm(edits)}
           disabled={isSubmitting}
-          className="rounded-md bg-red-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-50"
+          className="rounded-none bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-50"
         >
-          {isSubmitting ? 'Processing...' : 'Confirm'}
+          {isSubmitting ? 'Processing...' : 'Send'}
         </button>
       </div>
     </div>
